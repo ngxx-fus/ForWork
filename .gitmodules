@@ -1,0 +1,6 @@
+[submodule "PowerShellTheme"]
+	path = PowerShellTheme
+	url = https://github.com/ngxx-fus/PowerShellTheme
+[submodule "PythonUtils"]
+	path = PythonUtils
+	url = https://github.com/ngxx-fus/PythonUtils
