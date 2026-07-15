@@ -21,56 +21,11 @@ REMOTE_HOST="coder.${WORKSPACE}"
 BASE="/home/coder/workspace/peaks/build"
 
 PATHS=(
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_out_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_out_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_out_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_out_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_out_wp_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_out_wp_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_out_wp_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_out_wp_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_out_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_out_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_out_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_out_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_out_wp_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_out_wp_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_out_wp_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_out_wp_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_pwm_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_pwm_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_pwm_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_pwm_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_pwm_wp_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_pwm_wp_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_pwm_wp_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_pwm_wp_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_wp_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_wp_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_wp_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pc_wp_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pwm_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pwm_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pwm_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pwm_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pwm_wp_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pwm_wp_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pwm_wp_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_pwm_wp_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_tz_typical_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_wp_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_wp_test_gptclk_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_wp_test_pclkd_debug"
-	"${BASE}/r_gpt/ra8d1_ek/gcc/build_r_gpt_wp_test_pclkd_debug"
-	"${BASE}/r_gpt_s/ra8d1_ek/gcc/build_r_gpt_s_typical_debug"
+	"${BASE}/<r_module>/<RA8x>/gcc/build_<r_module>..."
+	"${BASE}/<r_module>/<RA8x>/gcc/build_<r_module>..."
+	"${BASE}/<r_module>/<RA8x>/gcc/build_<r_module>..."
+	"${BASE}/<r_module>/<RA8x>/gcc/build_<r_module>..."
+	"${BASE}/<r_module>/<RA8x>/gcc/build_<r_module>..."
 )
 
 # Poll interval (seconds) between sync attempts
@@ -223,7 +178,7 @@ while true; do
 		find_rtt_address
 		changed_in_last_iteration=0
 	fi
-    sync_files 1>/dev/null
+    sync_files
     rc=$?
     
     case ${rc} in
