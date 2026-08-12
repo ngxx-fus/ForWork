@@ -1,4 +1,5 @@
 import os
+import shutil
 import yaml
 import subprocess
 import time
@@ -20,6 +21,7 @@ DEVICE_PART_NUMBER = "R7KA8M2JF_CPU0"
 DEVICE_IP = "127.0.0.1:19020"
 LOGGER_TIMEOUT_SEC = 60
 RUN_SPECIFIED_BUILD = ""
+LOG_DIR_PATH = r"./.JLinkLogPath"
 
 """
 /*
@@ -31,9 +33,16 @@ RUN_SPECIFIED_BUILD = ""
  * @param log_acc_path Path to store the accumulated RTT logs.
  * @param part_number Target MCU part number.
  * @param ip Device IP address, can be empty.
+ * @param log_dir_path Path to the directory where individual build logs will be saved.
  */
 """
-def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_number, ip):
+def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_number, ip, log_dir_path):
+    # Check if log directory exists to clean up old logs
+    if os.path.exists(log_dir_path):
+        shutil.rmtree(log_dir_path)
+        
+    os.makedirs(log_dir_path)
+
     # Check if individual log file exists
     if os.path.exists(log_path):
         os.remove(log_path)
@@ -78,11 +87,14 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
                 # Skip to next configuration as it does not match the specified build
                 continue
 
-            # Check if RTT address starts with hex prefix
-            if not rtt_addr_raw.startswith('0x'):
+            # Check if RTT address is valid and starts with hex prefix
+            if rtt_addr_raw and not rtt_addr_raw.startswith('0x'):
                 rtt_addr = f"0x{rtt_addr_raw}"
             else:
                 rtt_addr = rtt_addr_raw
+
+            flash_log_file = os.path.join(log_dir_path, f"{config_name}_flash.log")
+            exec_log_file = os.path.join(log_dir_path, f"{config_name}_exec.log")
 
             # Open J-Link script file for writing
             with open(script_path, 'w') as script_file:
@@ -111,7 +123,12 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
                 "-CommanderScript", script_path
             ])
             
-            subprocess.run(flash_cmd)
+            print(f"\n\n\n============================================================")
+            print(f"--- Flashing device for [{category_name}] {config_name} ---")
+            
+            # Open flash log file for writing stdout and stderr
+            with open(flash_log_file, 'w') as flash_out:
+                subprocess.run(flash_cmd, stdout=flash_out, stderr=subprocess.STDOUT)
 
             log_cmd = [RTT_LOGGER_PATH]
 
@@ -119,23 +136,39 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
             if ip:
                 log_cmd.extend(["-ip", ip])
 
+            # Configure logger command explicitly ensuring RTTAddress is correct
             log_cmd.extend([
                 "-device", part_number,
                 "-if", "SWD",
-                "-speed", "4000",
-                "-RTTAddress", rtt_addr,
+                "-speed", "4000"
+            ])
+            
+            # Check if RTT address is provided before appending
+            if rtt_addr:
+                log_cmd.extend(["-RTTAddress", rtt_addr])
+                
+            log_cmd.extend([
                 "-RTTChannel", "0",
                 log_path
             ])
 
+            print(f"--- Starting execution for [{category_name}] {config_name} ---")
+            print(f"============================================================\n")
+            
             logger_process = subprocess.Popen(log_cmd)
             start_time = time.time()
+            
+            last_pos = 0
+            current_log = ""
+            timeout_occurred = False
 
-            # Loop to monitor log file
+            # Loop to monitor log file in real-time
             while True:
                 # Check if elapsed time exceeds timeout
                 if (time.time() - start_time) > LOGGER_TIMEOUT_SEC:
+                    print(f"\n[TIMEOUT] Execution exceeded {LOGGER_TIMEOUT_SEC} seconds. Terminating RTT Logger...\n")
                     logger_process.terminate()
+                    timeout_occurred = True
                     # Break loop due to timeout
                     break
                 
@@ -145,10 +178,19 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
                     try:
                         # Open log file for reading
                         with open(log_path, 'r') as log_file:
-                            current_log = log_file.read()
+                            log_file.seek(last_pos)
+                            new_data = log_file.read()
+                            last_pos = log_file.tell()
                             
+                            # Check if new data was read
+                            if new_data:
+                                print(new_data, end='', flush=True)
+                                current_log += new_data
+                                
                         # Check for completion string
                         if "FSP TESTS ALLDONE" in current_log:
+                            # Allow a tiny delay to ensure all logs flush before killing process
+                            time.sleep(0.5)
                             logger_process.terminate()
                             # Break loop when tests complete
                             break
@@ -160,16 +202,34 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
 
             logger_process.wait()
 
-            # Check if log file exists for final read
+            # Check if log file exists for final read to catch remaining output
             if os.path.exists(log_path):
-                # Open log file for reading
-                with open(log_path, 'r') as log_file:
-                    log_content = log_file.read()
-                    print(f"--- RTT Log for [{category_name}] {config_name} ---")
-                    print(log_content)
+                # Try to read the final content
+                try:
+                    # Open log file for final reading
+                    with open(log_path, 'r') as log_file:
+                        log_file.seek(last_pos)
+                        new_data = log_file.read()
+                        
+                        # Check if final new data is available
+                        if new_data:
+                            print(new_data, end='', flush=True)
+                            current_log += new_data
+                except Exception:
+                    # Skip exception handling
+                    pass
                 
-                summary_line = "No test summary found"
-                lines = log_content.split('\n')
+                # Open exec log file for writing execution data
+                with open(exec_log_file, 'w') as exec_out:
+                    exec_out.write(current_log)
+
+                # Check if timeout occurred to append special note
+                if timeout_occurred:
+                    summary_line = "TEST TIMED OUT"
+                else:
+                    summary_line = "No test summary found"
+                    
+                lines = current_log.split('\n')
                 
                 # Iterate through log lines to find metrics
                 for line in lines:
@@ -179,12 +239,12 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
                         # Break loop once summary is found
                         break
                         
-                summary_list.append(f"{summary_line} | BUILD: {app_path} | CATEGORY: {category_name} | ")
+                summary_list.append(f"{summary_line} | BUILD: {app_path} | CATEGORY: {category_name}")
                 
                 # Open accumulated log file to append
                 with open(log_acc_path, 'a') as acc_log_file:
                     acc_log_file.write(f"###################### Flash Info: SREC={app_path} | RTTAddress={rtt_addr_raw} | Category={category_name} ######################\n")
-                    acc_log_file.write(log_content)
+                    acc_log_file.write(current_log)
                     acc_log_file.write("\n\n")
                 
                 os.remove(log_path)
@@ -195,6 +255,7 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
         # Iterate through summary items
         for item in summary_list:
             print(item)
+        print("#####################################################################\n")
 
     # Return successfully
     return
@@ -213,6 +274,7 @@ if __name__ == "__main__":
     parser.add_argument("-DEVICE_IP", type=str, default=DEVICE_IP, help="Device IP address")
     parser.add_argument("-LOGGER_TIMEOUT_SEC", type=int, default=LOGGER_TIMEOUT_SEC, help="Logger timeout in seconds")
     parser.add_argument("-RUN_SPECIFIED_BUILD", type=str, default=RUN_SPECIFIED_BUILD, help="Specify exact app_path to flash and test")
+    parser.add_argument("-LOG_DIR_PATH", type=str, default=LOG_DIR_PATH, help="Directory to store individual build logs")
     
     args = parser.parse_args()
 
@@ -221,6 +283,7 @@ if __name__ == "__main__":
     RTT_LOGGER_PATH = args.RTT_LOGGER_PATH
     LOGGER_TIMEOUT_SEC = args.LOGGER_TIMEOUT_SEC
     RUN_SPECIFIED_BUILD = args.RUN_SPECIFIED_BUILD
+    LOG_DIR_PATH = args.LOG_DIR_PATH
     
     execute_jlink_workflow(
         args.PATH_TEST_INFO, 
@@ -228,5 +291,6 @@ if __name__ == "__main__":
         args.PATH_JLINK_LOG, 
         args.PATH_JLINK_LOG_ACC, 
         args.DEVICE_PART_NUMBER, 
-        args.DEVICE_IP
+        args.DEVICE_IP,
+        args.LOG_DIR_PATH
     )
