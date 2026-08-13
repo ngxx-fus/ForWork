@@ -11,9 +11,12 @@ Install dependencies:
 """
 
 # default parameters
-PATH_TEST_INFO = r"build\r_icu\ra2e3_fpb\gcc\test_info.yml"
+PATH_TEST_INFO = r"build\r_icu\ra8m2_ek\gcc\test_info.yml"
 PATH_JLINK_LOG_ACC = "RTT_Viewer_All.log"
-DEVICE_PART_NUMBER = "R7FA2E307"
+# NOTES:
+#       ra8m2_ek:       R7KA8M2JF_CPU0
+#       ra2ek_fpb:      R7FA2E307
+DEVICE_PART_NUMBER = "R7KA8M2JF_CPU0"
 DEVICE_IP = ""
 LOGGER_TIMEOUT_SEC = 60
 RUN_SPECIFIED_BUILD = ""
