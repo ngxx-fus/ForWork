@@ -11,16 +11,17 @@ Install dependencies:
 """
 
 # default parameters
-PATH_TEST_INFO = r"build\r_icu\ra8m2_ek\gcc\test_info.yml"
+PATH_TEST_INFO = r"build/TestInfo.yml"
 PATH_JLINK_LOG_ACC = "RTT_Viewer_All.log"
 # NOTES:
 #       ra8m2_ek:       R7KA8M2JF_CPU0
 #       ra2ek_fpb:      R7FA2E307
-DEVICE_PART_NUMBER = "R7KA8M2JF_CPU0"
-DEVICE_IP = ""
-LOGGER_TIMEOUT_SEC = 60
+#       ra2l1_ek:       R7FA2L1AB
+DEVICE_PART_NUMBER  = "R7FA2L1AB"
+DEVICE_IP           = "127.0.0.1:19020"
+LOGGER_TIMEOUT_SEC  = 60
 RUN_SPECIFIED_BUILD = ""
-LOG_DIR_PATH = r"./.JLinkLogPath"
+LOG_DIR_PATH        = r"./.JLinkLogPath"
 
 """
 /*
@@ -105,6 +106,9 @@ def execute_jlink_workflow(info_path, log_acc_path, part_number, ip, log_dir_pat
 
             # Control flow: Try to execute hardware J-Link operations
             try:
+                current_log = ""
+                timeout_occurred = False
+
                 # Control flow: Connect using IP or USB
                 if ip:
                     jlink.open(ip_addr=ip)
