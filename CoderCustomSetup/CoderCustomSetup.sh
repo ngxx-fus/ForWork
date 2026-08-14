@@ -18,6 +18,7 @@ set -u  # Treat unset variables as error
 # ===========================================================================
 export SETUP_OHMYZSH_EN=1
 export SETUP_NVIM_EN=0
+export SETUP_NVIM_PREREQUISITES_EN=1 # only works if SETUP_NVIM_EN=1
 export SETUP_ADD_APT_REPO_EN=1
 export SETUP_USER_ALIASES_EN=1
 export SETUP_JLINK_EN=1
@@ -158,29 +159,61 @@ if [[ "${SETUP_NVIM_EN}" == "1" ]]; then
     echo ">>> Installing Neovim (${NVIM_VERSION})..."
     
     # --- Install prerequisites ---
-    export DEBIAN_FRONTEND=noninteractive
-    sudo apt install -y git gcc make ripgrep fd-find nodejs npm python3 python3-pip unzip curl
+    if [[ "${SETUP_NVIM_PREREQUISITES_EN}" == "1" ]]; then 
+        echo "[INF] Installing Neovim prerequisites..."
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt update && sudo apt install -y \
+            git \
+            build-essential \
+            gcc \
+            g++ \
+            make \
+            ripgrep \
+            fd-find \
+            unzip \
+            curl \
+            tar \
+            nodejs \
+            npm \
+            python3 \
+            python3-pip \
+            xclip \
+            wl-clipboard
+
+        # --- Create symlink for fd-find if missing ---
+        MakeThisDirExist "${PATH_FOLDER_HOME}/.local/bin"
+        if command -v fdfind >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then
+            ln -sf "$(which fdfind)" "${PATH_FOLDER_HOME}/.local/bin/fd"
+            echo "[INF] Created symlink for fd -> fdfind in ~/.local/bin"
+        fi
+    fi
 
     # --- Download ---
     cd "${PATH_FOLDER_DOWNLOADS}"
-    wget -q --show-progress "${URL_NVIM_DOWNLOAD}"
+    echo "[INF] Downloading Neovim tarball..."
+    wget -q --show-progress "${URL_NVIM_DOWNLOAD}" -O "${NVIM_TARBALL}"
 
     # --- Extract ---
+    echo "[INF] Extracting ${NVIM_TARBALL}..."
     tar -zxvf "${NVIM_TARBALL}"
 
     # --- Install to /opt/nvim (with backup) ---
     if [ -d /opt/nvim ]; then
         sudo cp -vrf /opt/nvim "/opt/nvim.bak.$(date +%s)"
-        sudo rm -vrf /opt/nvim
+        sudo rm -rf /opt/nvim
         echo "[INF] Backed up old /opt/nvim ---> /opt/nvim.bak.$(date +%s)"
     fi
-    if [ -d /usr/local/bin/nvim ]; then
+    if [ -e /usr/local/bin/nvim ]; then
         sudo rm -vf /usr/local/bin/nvim 
-        echo "[INF] Removed sym-link /usr/local/bin/nvim"
+        echo "[INF] Removed existing /usr/local/bin/nvim"
     fi
 
     sudo mkdir -p /opt/nvim
     sudo cp -vrf "${NIVM_INSTALL_DIRNAME}/." /opt/nvim
+
+    # Create symlink in /usr/local/bin for global nvim access
+    sudo ln -sf /opt/nvim/bin/nvim /usr/local/bin/nvim
+    echo "[INF] Created symlink /usr/local/bin/nvim -> /opt/nvim/bin/nvim"
 
     # --- Clone custom Neovim config (with backup) ---
     if [ -d "${PATH_FOLDER_NVIM_CONFIG}" ]; then
@@ -189,9 +222,13 @@ if [[ "${SETUP_NVIM_EN}" == "1" ]]; then
     fi
     MakeThisDirExist "${PATH_FOLDER_NVIM_CONFIG}"
 
+    echo "[INF] Cloning Neovim configuration repository..."
     git clone --recurse-submodules \
         "${URL_NEOVIM_CONF_REPO}" \
         "${PATH_FOLDER_NVIM_CONFIG}"
+
+    # --- Cleanup downloaded archive ---
+    rm -rf "${NVIM_TARBALL}" "./${NIVM_INSTALL_DIRNAME}"
 
     # --- Return to original directory ---
     cd "${PATH_FOLDER_CURRENT}"
