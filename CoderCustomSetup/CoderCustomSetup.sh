@@ -358,6 +358,12 @@ if [[ "${SETUP_JLINK_EN}" == "1" ]]; then
             # Cleanup downloaded tarball and extracted temporary folder
             rm -rf "${JLINK_TARBALL_NAME}" "./${JLINK_INSTALL_DIRNAME}"
             echo "[INF] JLink installation successful."
+
+            echo "[INF] Adding JLink to system PATH in ${PATH_FOLDER_DOT_ZSHRC}..."
+            AppendIfNotExist "${PATH_FOLDER_DOT_ZSHRC}" ""
+            AppendIfNotExist "${PATH_FOLDER_DOT_ZSHRC}" "# JLINK ###################################"
+            AppendIfNotExist "${PATH_FOLDER_DOT_ZSHRC}" "export PATH=\"\$PATH:${PATH_FOLDER_JLINK}\""
+
         else
             echo "[ERR] Extracted folder ${JLINK_INSTALL_DIRNAME} not found."
         fi
