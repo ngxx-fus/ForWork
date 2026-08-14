@@ -18,11 +18,12 @@ set -u  # Treat unset variables as error
 # ===========================================================================
 export SETUP_OHMYZSH_EN=1
 export SETUP_NVIM_EN=0
-export SETUP_NVIM_PREREQUISITES_EN=1 # only works if SETUP_NVIM_EN=1
+export SETUP_NVIM_PREREQUISITES_EN=1        # only works if SETUP_NVIM_EN=1
 export SETUP_ADD_APT_REPO_EN=1
 export SETUP_USER_ALIASES_EN=1
 export SETUP_JLINK_EN=1
 export SETUP_BACKGROUND_EN=1
+export SETUP_AUTO_SET_BACKGROUND_EN=0       # only works if SETUP_BACKGROUND_EN=1
 
 # ===========================================================================
 # Versioning & Security
@@ -32,7 +33,8 @@ export NVIM_TARBALL="nvim-linux-x86_64.tar.gz"
 export NIVM_INSTALL_DIRNAME="nvim-linux-x86_64"
 export JLINK_VERSION_NAME="JLink-V9.5.0/x64-Linux"
 export JLINK_TARBALL_NAME="JLink_Linux_V950_x86_64.tgz"
-export JLINK_INSTALL_DIRNAME="JLink_V950"
+export JLINK_TARBALL_EXTRACTED_NAME="JLink_Linux_V950_x86_64"
+export JLINK_INSTALLATION_DIRNAME="JLink_V950"
 export BACKGROUND_IMG_FILENAME="IMG_4273.JPG"
 
 # ===========================================================================
@@ -45,7 +47,7 @@ export PATH_FOLDER_DOT_OH_MY_ZSH="${PATH_FOLDER_HOME}/.oh-my-zsh"
 export PATH_FOLDER_NVIM_CONFIG="${PATH_FOLDER_HOME}/.config/nvim"
 export PATH_FOLDER_DOWNLOADS="${PATH_FOLDER_HOME}/Downloads"
 export PATH_FOLDER_FUS="${PATH_FOLDER_HOME}/.fus"
-export PATH_FOLDER_JLINK="${PATH_FOLDER_HOME}/workspace/${JLINK_INSTALL_DIRNAME}"
+export PATH_FOLDER_JLINK="${PATH_FOLDER_HOME}/workspace/${JLINK_INSTALLATION_DIRNAME}"
 export PATH_FOLDER_BACKGROUND="${PATH_FOLDER_FUS}/.BG"
 export PATH_FILE_USER_ALIASES="${PATH_FOLDER_FUS}/user_aliases.sh"
 
@@ -349,14 +351,15 @@ if [[ "${SETUP_JLINK_EN}" == "1" ]]; then
 
     if [ -f "${JLINK_TARBALL_NAME}" ]; then
         echo "[INF] Extracting ${JLINK_TARBALL_NAME}..."
+        
         tar -zxvf "${JLINK_TARBALL_NAME}"
 
-        if [ -d "${JLINK_INSTALL_DIRNAME}" ]; then
-            echo "[INF] Copying ${JLINK_INSTALL_DIRNAME} to ${PATH_FOLDER_JLINK}"
-            cp -vrf "./${JLINK_INSTALL_DIRNAME}/." "${PATH_FOLDER_JLINK}"
+        if [ -d "${JLINK_TARBALL_EXTRACTED_NAME}" ]; then
+            echo "[INF] Copying ${JLINK_TARBALL_EXTRACTED_NAME} to ${PATH_FOLDER_JLINK}"
+            cp -vrf "./${JLINK_TARBALL_EXTRACTED_NAME}/." "${PATH_FOLDER_JLINK}"
             
             # Cleanup downloaded tarball and extracted temporary folder
-            rm -rf "${JLINK_TARBALL_NAME}" "./${JLINK_INSTALL_DIRNAME}"
+            rm -rf "${JLINK_TARBALL_NAME}" "./${JLINK_TARBALL_EXTRACTED_NAME}"
             echo "[INF] JLink installation successful."
 
             echo "[INF] Adding JLink to system PATH in ${PATH_FOLDER_DOT_ZSHRC}..."
@@ -365,7 +368,7 @@ if [[ "${SETUP_JLINK_EN}" == "1" ]]; then
             AppendIfNotExist "${PATH_FOLDER_DOT_ZSHRC}" "export PATH=\"\$PATH:${PATH_FOLDER_JLINK}\""
 
         else
-            echo "[ERR] Extracted folder ${JLINK_INSTALL_DIRNAME} not found."
+            echo "[ERR] Extracted folder ${JLINK_TARBALL_EXTRACTED_NAME} not found."
         fi
     else
         echo "[ERR] Failed to download JLink from ${URL_JLINK_ARCHIVE}"
@@ -393,8 +396,19 @@ if [[ "${SETUP_BACKGROUND_EN}" == "1" ]]; then
     
     if [ -f "${BACKGROUND_DEST_IMG}" ]; then
         echo "[INF] Moving ${BACKGROUND_DEST_IMG} to ${PATH_FOLDER_BACKGROUND}"
-        mv -f "${BACKGROUND_DEST_IMG}" "${PATH_FOLDER_BACKGROUND}/${BACKGROUND_DEST_IMG}"
+        FULL_BG_PATH="${PATH_FOLDER_BACKGROUND}/${BACKGROUND_DEST_IMG}"
+        mv -f "${BACKGROUND_DEST_IMG}" "${FULL_BG_PATH}"
         echo "[INF] Background image installation successful."
+
+        if [[ "${SETUP_AUTO_SET_BACKGROUND_EN}" == "1" ]]; then
+            echo "[INF] Set background for new image"
+            if command -v gsettings >/dev/null 2>&1; then
+                echo "[INF] Applying background wallpaper setting..."
+                dbus-run-session gsettings set org.gnome.desktop.background picture-uri "file://${FULL_BG_PATH}" 2>/dev/null || true
+                dbus-run-session gsettings set org.gnome.desktop.background picture-uri-dark "file://${FULL_BG_PATH}" 2>/dev/null || true
+            fi
+        fi
+
     else
         echo "[ERR] Failed to download background image from ${URL_BACKGROUND_IMG}"
     fi
