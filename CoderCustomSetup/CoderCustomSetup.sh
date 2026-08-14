@@ -4,6 +4,7 @@
 # - Install Neovim + custom config
 # - Install Oh-My-Zsh + plugins + custom theme
 # - Install user aliases
+# - Install SEGGER J-Link tools
 #
 # Usage: bash setup.sh
 ###############################################################################
@@ -18,12 +19,16 @@ export SETUP_OHMYZSH_EN=1
 export SETUP_NVIM_EN=0
 export SETUP_ADD_APT_REPO_EN=1
 export SETUP_USER_ALIASES_EN=1
+export SETUP_JLINK_EN=1
 
 # ===========================================================================
 # Versioning & Security
 # ===========================================================================
-export NVIM_VERSION="v0.10.0"
-export NVIM_TARBALL="nvim-linux64.tar.gz"
+export NVIM_VERSION="nightly"
+export NVIM_TARBALL="nvim-linux-x86_64.tar.gz"
+export NIVM_INSTALL_DIRNAME="nvim-linux-x86_64"
+export JLINK_TARBALL_NAME="JLink_Linux_V950_x86_64.tgz"
+export JLINK_INSTALL_DIRNAME="JLink_V950"
 
 # ===========================================================================
 # Global private vars
@@ -35,6 +40,7 @@ export PATH_FOLDER_DOT_OH_MY_ZSH="${PATH_FOLDER_HOME}/.oh-my-zsh"
 export PATH_FOLDER_NVIM_CONFIG="${PATH_FOLDER_HOME}/.config/nvim"
 export PATH_FOLDER_DOWNLOADS="${PATH_FOLDER_HOME}/Downloads"
 export PATH_FOLDER_FUS="${PATH_FOLDER_HOME}/.fus"
+export PATH_FOLDER_JLINK="${PATH_FOLDER_HOME}/workspace/${JLINK_INSTALL_DIRNAME}"
 export PATH_FILE_USER_ALIASES="${PATH_FOLDER_FUS}/user_aliases.sh"
 
 # Theme
@@ -50,6 +56,7 @@ export URL_OHMYZSH_INSTALL_SCRIPT="https://raw.githubusercontent.com/ohmyzsh/ohm
 export URL_ZSH_SYNTAX_HIGHLIGHTING_REPO="https://github.com/zsh-users/zsh-syntax-highlighting.git"
 export URL_ZSH_AUTOSUGGESTIONS_REPO="https://github.com/zsh-users/zsh-autosuggestions.git"
 export URL_ZSH_Z_REPO="https://github.com/agkozak/zsh-z.git"
+export URL_JLINK_ARCHIVE="..."
 
 # ===========================================================================
 # Helper functions
@@ -156,14 +163,17 @@ if [[ "${SETUP_NVIM_EN}" == "1" ]]; then
 
     # --- Install to /opt/nvim (with backup) ---
     if [ -d /opt/nvim ]; then
-        sudo mv /opt/nvim "/opt/nvim.bak.$(date +%s)"
-        echo "[INF] Backed up old /opt/nvim"
+        sudo cp -vrf /opt/nvim "/opt/nvim.bak.$(date +%s)"
+        sudo rm -vrf /opt/nvim
+        echo "[INF] Backed up old /opt/nvim ---> /opt/nvim.bak.$(date +%s)"
     fi
-    sudo mkdir -p /opt/nvim
-    sudo cp -vrf nvim-linux64/. /opt/nvim
+    if [ -d /usr/local/bin/nvim ]; then
+        sudo rm -vf /usr/local/bin/nvim 
+        echo "[INF] Removed sym-link /usr/local/bin/nvim"
+    fi
 
-    # --- Add nvim to PATH in .zshrc ---
-    AppendIfNotExist "${PATH_FOLDER_DOT_ZSHRC}" 'export PATH="$PATH:/opt/nvim/bin"'
+    sudo mkdir -p /opt/nvim
+    sudo cp -vrf "${NIVM_INSTALL_DIRNAME}/." /opt/nvim
 
     # --- Clone custom Neovim config (with backup) ---
     if [ -d "${PATH_FOLDER_NVIM_CONFIG}" ]; then
@@ -203,7 +213,6 @@ if [[ "${SETUP_OHMYZSH_EN}" == "1" ]]; then
     # --- Install Oh-My-Zsh safely ---
     OMZ_INSTALLER="${PATH_FOLDER_DOWNLOADS}/omz_install.sh"
     curl -fsSL "${URL_OHMYZSH_INSTALL_SCRIPT}" -o "${OMZ_INSTALLER}"
-    # NOTE: Add SHA256 checksum verification here if required for strict compliance
     sh "${OMZ_INSTALLER}" "" --unattended
 
     # --- Install plugins (Idempotent) ---
@@ -276,9 +285,50 @@ if [[ "${SETUP_USER_ALIASES_EN}" == "1" ]]; then
 fi
 
 # ===========================================================================
+# Install JLink
+# ===========================================================================
+if [[ "${SETUP_JLINK_EN}" == "1" ]]; then
+    echo ">>> Installing JLink software package..."
+
+    # Ensure clean target directory
+    if [ -d "${PATH_FOLDER_JLINK}" ]; then
+        sudo rm -rf "${PATH_FOLDER_JLINK}"
+        echo "[INF] Removed existing directory: ${PATH_FOLDER_JLINK}"
+    fi
+    MakeThisDirExist "${PATH_FOLDER_JLINK}"
+
+    # Switch execution path to Downloads directory
+    cd "${PATH_FOLDER_DOWNLOADS}"
+
+    echo "[INF] Downloading JLink tarball..."
+    wget -q --show-progress "${URL_JLINK_ARCHIVE}" -O "${JLINK_TARBALL_NAME}"
+
+    if [ -f "${JLINK_TARBALL_NAME}" ]; then
+        echo "[INF] Extracting ${JLINK_TARBALL_NAME}..."
+        tar -zxvf "${JLINK_TARBALL_NAME}"
+
+        if [ -d "${JLINK_INSTALL_DIRNAME}" ]; then
+            echo "[INF] Copying ${JLINK_INSTALL_DIRNAME} to ${PATH_FOLDER_JLINK}"
+            cp -vrf "./${JLINK_INSTALL_DIRNAME}/." "${PATH_FOLDER_JLINK}"
+            
+            # Cleanup downloaded tarball and extracted temporary folder
+            rm -rf "${JLINK_TARBALL_NAME}" "./${JLINK_INSTALL_DIRNAME}"
+            echo "[INF] JLink installation successful."
+        else
+            echo "[ERR] Extracted folder ${JLINK_INSTALL_DIRNAME} not found."
+        fi
+    else
+        echo "[ERR] Failed to download JLink from ${URL_JLINK_ARCHIVE}"
+    fi
+
+    # Return execution context back to starting directory
+    cd "${PATH_FOLDER_CURRENT}"
+fi
+
+# ===========================================================================
 echo ""
 echo "╔══════════════════════════════════════════╗"
-echo "║          Setup complete!                 ║"
+echo "║  Setup complete!                         ║"
 echo "║  Run: source ~/.zshrc                    ║"
 echo "║  Or restart your shell to apply changes  ║"
 echo "╚══════════════════════════════════════════╝"
