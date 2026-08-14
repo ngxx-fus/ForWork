@@ -5,6 +5,7 @@
 # - Install Oh-My-Zsh + plugins + custom theme
 # - Install user aliases
 # - Install SEGGER J-Link tools
+# - Setup desktop background wallpaper
 #
 # Usage: bash setup.sh
 ###############################################################################
@@ -20,6 +21,7 @@ export SETUP_NVIM_EN=0
 export SETUP_ADD_APT_REPO_EN=1
 export SETUP_USER_ALIASES_EN=1
 export SETUP_JLINK_EN=1
+export SETUP_BACKGROUND_EN=1
 
 # ===========================================================================
 # Versioning & Security
@@ -27,8 +29,10 @@ export SETUP_JLINK_EN=1
 export NVIM_VERSION="nightly"
 export NVIM_TARBALL="nvim-linux-x86_64.tar.gz"
 export NIVM_INSTALL_DIRNAME="nvim-linux-x86_64"
+export JLINK_VERSION_NAME="JLink-V9.5.0/x64-Linux"
 export JLINK_TARBALL_NAME="JLink_Linux_V950_x86_64.tgz"
 export JLINK_INSTALL_DIRNAME="JLink_V950"
+export BACKGROUND_IMG_FILENAME="IMG_4273.JPG"
 
 # ===========================================================================
 # Global private vars
@@ -41,6 +45,7 @@ export PATH_FOLDER_NVIM_CONFIG="${PATH_FOLDER_HOME}/.config/nvim"
 export PATH_FOLDER_DOWNLOADS="${PATH_FOLDER_HOME}/Downloads"
 export PATH_FOLDER_FUS="${PATH_FOLDER_HOME}/.fus"
 export PATH_FOLDER_JLINK="${PATH_FOLDER_HOME}/workspace/${JLINK_INSTALL_DIRNAME}"
+export PATH_FOLDER_BACKGROUND="${PATH_FOLDER_FUS}/.BG"
 export PATH_FILE_USER_ALIASES="${PATH_FOLDER_FUS}/user_aliases.sh"
 
 # Theme
@@ -48,15 +53,17 @@ export PATH_FOLDER_OMZ_THEMES="${PATH_FOLDER_DOT_OH_MY_ZSH}/themes"
 export PATH_FILE_NGXXFUS_THEME="${PATH_FOLDER_OMZ_THEMES}/ngxxfus.zsh-theme"
 
 # URLs
-export URL_USER_ALIASES="https://raw.githubusercontent.com/ngxx-fus/ForWork/refs/heads/main/.assert/useralias.sh"
-export URL_NGXXFUS_THEME="https://raw.githubusercontent.com/ngxx-fus/ForWork/refs/heads/main/.assert/ngxxfus.zsh-theme"
+export URL_FORWORK_ROOTDIR="https://raw.githubusercontent.com/ngxx-fus/ForWork/refs/heads/main"
+export URL_USER_ALIASES="${URL_FORWORK_ROOTDIR}/.assert/useralias.sh"
+export URL_NGXXFUS_THEME="${URL_FORWORK_ROOTDIR}/.assert/ngxxfus.zsh-theme"
+export URL_JLINK_ARCHIVE="${URL_FORWORK_ROOTDIR}/.assert/${JLINK_VERSION_NAME}/${JLINK_TARBALL_NAME}"
+export URL_BACKGROUND_IMG="${URL_FORWORK_ROOTDIR}/.imgs/BG/IMG_4273.JPG"
 export URL_NVIM_DOWNLOAD="https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/${NVIM_TARBALL}"
 export URL_NEOVIM_CONF_REPO="https://github.com/ngxx-fus/neovim-conf.git"
 export URL_OHMYZSH_INSTALL_SCRIPT="https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh"
 export URL_ZSH_SYNTAX_HIGHLIGHTING_REPO="https://github.com/zsh-users/zsh-syntax-highlighting.git"
 export URL_ZSH_AUTOSUGGESTIONS_REPO="https://github.com/zsh-users/zsh-autosuggestions.git"
 export URL_ZSH_Z_REPO="https://github.com/agkozak/zsh-z.git"
-export URL_JLINK_ARCHIVE="..."
 
 # ===========================================================================
 # Helper functions
@@ -326,9 +333,39 @@ if [[ "${SETUP_JLINK_EN}" == "1" ]]; then
 fi
 
 # ===========================================================================
+# Install Background image
+# ===========================================================================
+if [[ "${SETUP_BACKGROUND_EN}" == "1" ]]; then
+    echo ">>> Setting up desktop background..."
+
+    MakeThisDirExist "${PATH_FOLDER_BACKGROUND}"
+
+    # Switch execution path to Downloads directory
+    cd "${PATH_FOLDER_DOWNLOADS}"
+
+    BACKGROUND_DEST_IMG="IMG.$(date "+%H.%M.%S").${BACKGROUND_IMG_FILENAME}"
+    
+    echo "[INF] Downloading background image..."
+    wget -q --show-progress "${URL_BACKGROUND_IMG}" -O "${BACKGROUND_DEST_IMG}"
+    
+    if [ -f "${BACKGROUND_DEST_IMG}" ]; then
+        echo "[INF] Moving ${BACKGROUND_DEST_IMG} to ${PATH_FOLDER_BACKGROUND}"
+        mv -f "${BACKGROUND_DEST_IMG}" "${PATH_FOLDER_BACKGROUND}/${BACKGROUND_DEST_IMG}"
+        echo "[INF] Background image installation successful."
+    else
+        echo "[ERR] Failed to download background image from ${URL_BACKGROUND_IMG}"
+    fi
+
+    # Return execution context back to starting directory
+    cd "${PATH_FOLDER_CURRENT}"
+fi
+
+# ===========================================================================
+# Goodbye
+# ===========================================================================
 echo ""
 echo "╔══════════════════════════════════════════╗"
-echo "║  Setup complete!                         ║"
+echo "║          Setup complete!                 ║"
 echo "║  Run: source ~/.zshrc                    ║"
 echo "║  Or restart your shell to apply changes  ║"
 echo "╚══════════════════════════════════════════╝"
