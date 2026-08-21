@@ -395,8 +395,14 @@ if [[ "${SETUP_BACKGROUND_EN}" == "1" ]]; then
     wget -q --show-progress "${URL_BACKGROUND_IMG}" -O "${BACKGROUND_DEST_IMG}"
     
     if [ -f "${BACKGROUND_DEST_IMG}" ]; then
+
+        # Ensure system background directory exists before copying
+        sudo mkdir -p "/usr/share/backgrounds/xfce"
+        sudo cp -v "${BACKGROUND_DEST_IMG}" "/usr/share/backgrounds/xfce/${BACKGROUND_DEST_IMG}"
+        sudo chmod 644 "/usr/share/backgrounds/xfce/${BACKGROUND_DEST_IMG}"
+
+        # Move original file to user background folder
         echo "[INF] Moving ${BACKGROUND_DEST_IMG} to ${PATH_FOLDER_BACKGROUND}"
-        FULL_BG_PATH="${PATH_FOLDER_BACKGROUND}/${BACKGROUND_DEST_IMG}"
         mv -f "${BACKGROUND_DEST_IMG}" "${FULL_BG_PATH}"
         echo "[INF] Background image installation successful."
 
