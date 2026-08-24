@@ -56,6 +56,7 @@ export PATH_FOLDER_JLINK="${PATH_FOLDER_HOME}/workspace/${JLINK_INSTALLATION_DIR
 export PATH_FOLDER_BACKGROUND="${PATH_FOLDER_FUS}/.BG"
 export PATH_FILE_USER_ALIASES="${PATH_FOLDER_FUS}/user_aliases.sh"
 export PATH_FOLDER_CLANGD="/opt/clangd"
+
 # Theme
 export PATH_FOLDER_OMZ_THEMES="${PATH_FOLDER_DOT_OH_MY_ZSH}/themes"
 export PATH_FILE_NGXXFUS_THEME="${PATH_FOLDER_OMZ_THEMES}/ngxxfus.zsh-theme"
@@ -459,7 +460,7 @@ if [[ "${SETUP_CLANGD}" == "1" ]]; then
 
             # Create symlink for global access
             echo "[INF] Creating symlink /usr/local/bin/clangd -> ${PATH_FOLDER_CLANGD}/bin/clangd"
-            sudo ln -sf "${PATH_FOLDER_CLANGD}/bin/clangd" /usr/local/bin/clangd
+            sudo ln -sf "${PATH_FOLDER_CLANGD}/bin/clangd" /usr/bin/clangd
 
             # Cleanup downloaded zip
             rm -f "${CLANGD_ZIP_FILENAME}"
