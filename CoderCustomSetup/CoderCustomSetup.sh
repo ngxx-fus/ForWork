@@ -6,6 +6,7 @@
 # - Install user aliases
 # - Install SEGGER J-Link tools
 # - Setup desktop background wallpaper
+# - Install Clangd
 #
 # Usage: bash setup.sh
 ###############################################################################
@@ -24,6 +25,7 @@ export SETUP_USER_ALIASES_EN=1
 export SETUP_JLINK_EN=1
 export SETUP_BACKGROUND_EN=1
 export SETUP_AUTO_SET_BACKGROUND_EN=0       # only works if SETUP_BACKGROUND_EN=1
+export SETUP_CLANGD=1
 
 # ===========================================================================
 # Versioning & Security
@@ -36,6 +38,9 @@ export JLINK_TARBALL_NAME="JLink_Linux_V950_x86_64.tgz"
 export JLINK_TARBALL_EXTRACTED_NAME="JLink_Linux_V950_x86_64"
 export JLINK_INSTALLATION_DIRNAME="JLink_V950"
 export BACKGROUND_IMG_FILENAME="IMG_4273.JPG"
+export CLANGD_VERSION="22.1.6"
+export CLANGD_ZIP_FILENAME="clangd-linux-22.1.6.zip"
+export CLANGD_EXTRACTED_FILENAME="clangd-linux-22.1.6"
 
 # ===========================================================================
 # Global private vars
@@ -50,7 +55,7 @@ export PATH_FOLDER_FUS="${PATH_FOLDER_HOME}/.fus"
 export PATH_FOLDER_JLINK="${PATH_FOLDER_HOME}/workspace/${JLINK_INSTALLATION_DIRNAME}"
 export PATH_FOLDER_BACKGROUND="${PATH_FOLDER_FUS}/.BG"
 export PATH_FILE_USER_ALIASES="${PATH_FOLDER_FUS}/user_aliases.sh"
-
+export PATH_FOLDER_CLANGD="/opt/clangd"
 # Theme
 export PATH_FOLDER_OMZ_THEMES="${PATH_FOLDER_DOT_OH_MY_ZSH}/themes"
 export PATH_FILE_NGXXFUS_THEME="${PATH_FOLDER_OMZ_THEMES}/ngxxfus.zsh-theme"
@@ -67,6 +72,7 @@ export URL_OHMYZSH_INSTALL_SCRIPT="https://raw.githubusercontent.com/ohmyzsh/ohm
 export URL_ZSH_SYNTAX_HIGHLIGHTING_REPO="https://github.com/zsh-users/zsh-syntax-highlighting.git"
 export URL_ZSH_AUTOSUGGESTIONS_REPO="https://github.com/zsh-users/zsh-autosuggestions.git"
 export URL_ZSH_Z_REPO="https://github.com/agkozak/zsh-z.git"
+export URL_CLANGD="https://github.com/clangd/clangd/releases/download/${CLANGD_VERSION}/${CLANGD_ZIP_FILENAME}"
 
 # ===========================================================================
 # Helper functions
@@ -390,6 +396,7 @@ if [[ "${SETUP_BACKGROUND_EN}" == "1" ]]; then
     cd "${PATH_FOLDER_DOWNLOADS}"
 
     BACKGROUND_DEST_IMG="IMG.$(date "+%H.%M.%S").${BACKGROUND_IMG_FILENAME}"
+    FULL_BG_PATH="${PATH_FOLDER_BACKGROUND}/${BACKGROUND_DEST_IMG}"
     
     echo "[INF] Downloading background image..."
     wget -q --show-progress "${URL_BACKGROUND_IMG}" -O "${BACKGROUND_DEST_IMG}"
@@ -424,11 +431,56 @@ if [[ "${SETUP_BACKGROUND_EN}" == "1" ]]; then
 fi
 
 # ===========================================================================
+# Install Clangd
+# ===========================================================================
+if [[ "${SETUP_CLANGD}" == "1" ]]; then
+    echo ">>> Installing Clangd (${CLANGD_VERSION})..."
+
+    # Switch execution path to Downloads directory
+    cd "${PATH_FOLDER_DOWNLOADS}"
+
+    echo "[INF] Downloading Clangd zip file..."
+    wget -q --show-progress "${URL_CLANGD}" -O "${CLANGD_ZIP_FILENAME}"
+
+    if [ -f "${CLANGD_ZIP_FILENAME}" ]; then
+        echo "[INF] Extracting ${CLANGD_ZIP_FILENAME}..."
+        unzip -q "${CLANGD_ZIP_FILENAME}"
+
+        if [ -d "${CLANGD_EXTRACTED_FILENAME}" ]; then
+            # Backup existing installation if it exists
+            if [ -d "${PATH_FOLDER_CLANGD}" ]; then
+                sudo mv "${PATH_FOLDER_CLANGD}" "${PATH_FOLDER_CLANGD}.bak.$(date +%s)"
+                echo "[INF] Backed up old clangd installation"
+            fi
+
+            # Move extracted folder to /opt
+            echo "[INF] Moving ${CLANGD_EXTRACTED_FILENAME} to ${PATH_FOLDER_CLANGD}"
+            sudo mv "${CLANGD_EXTRACTED_FILENAME}" "${PATH_FOLDER_CLANGD}"
+
+            # Create symlink for global access
+            echo "[INF] Creating symlink /usr/local/bin/clangd -> ${PATH_FOLDER_CLANGD}/bin/clangd"
+            sudo ln -sf "${PATH_FOLDER_CLANGD}/bin/clangd" /usr/local/bin/clangd
+
+            # Cleanup downloaded zip
+            rm -f "${CLANGD_ZIP_FILENAME}"
+            echo "[INF] Clangd installation successful."
+        else
+            echo "[ERR] Extracted folder ${CLANGD_EXTRACTED_FILENAME} not found."
+        fi
+    else
+        echo "[ERR] Failed to download Clangd from ${URL_CLANGD}"
+    fi
+
+    # Return execution context back to starting directory
+    cd "${PATH_FOLDER_CURRENT}"
+fi
+
+# ===========================================================================
 # Goodbye
 # ===========================================================================
 echo ""
-echo "╔══════════════════════════════════════════╗"
-echo "║          Setup complete!                 ║"
-echo "║  Run: source ~/.zshrc                    ║"
-echo "║  Or restart your shell to apply changes  ║"
-echo "╚══════════════════════════════════════════╝"
+echo "╔══════════════════════════════════════════════════════════════════════════════════╗"
+echo "║                              Setup complete!                                     ║"
+echo "║                      Run: source ~/.zshrc                                        ║"
+echo "║                      Or restart your shell to apply changes                      ║"
+echo "╚══════════════════════════════════════════════════════════════════════════════════╝"
