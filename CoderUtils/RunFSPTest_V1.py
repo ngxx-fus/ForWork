@@ -360,6 +360,18 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
+    print(f"args.JLINK_PATH          ={args.JLINK_PATH}")
+    print(f"args.RTT_LOGGER_PATH     ={args.RTT_LOGGER_PATH}")
+    print(f"args.PATH_JLINK_SCRIPT   ={args.PATH_JLINK_SCRIPT}")
+    print(f"args.PATH_JLINK_LOG      ={args.PATH_JLINK_LOG}")
+    print(f"args.PATH_TEST_INFO      ={args.PATH_TEST_INFO}")
+    print(f"args.PATH_JLINK_LOG_ACC  ={args.PATH_JLINK_LOG_ACC}")
+    print(f"args.DEVICE_PART_NUMBER  ={args.DEVICE_PART_NUMBER}")
+    print(f"args.DEVICE_IP           ={args.DEVICE_IP}")
+    print(f"args.LOGGER_TIMEOUT_SEC  ={args.LOGGER_TIMEOUT_SEC}")
+    print(f"args.RUN_SPECIFIED_BUILD ={args.RUN_SPECIFIED_BUILD}")
+    print(f"args.LOG_DIR_PATH        ={args.LOG_DIR_PATH}")
+
     (
         execute_jlink_workflow(
             args.PATH_TEST_INFO, 
