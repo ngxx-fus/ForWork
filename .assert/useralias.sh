@@ -51,6 +51,7 @@ find-fuzzy() {
     fi
 }
 
+
 #  * @brief Transfer files between local host and remote Raspberry Pi using rsync.
 #  * @details Supports upload and download with an optional --type filter flag.
 #  *
