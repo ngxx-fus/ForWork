@@ -51,4 +51,30 @@ find-fuzzy() {
     fi
 }
 
+copy-rpi() {
+    # Check if both source and destination arguments are provided
+    if [ "$#" -ne 2 ]; then
+        echo "Usage: copy-rpi <src> <dst>"
+        echo "Example (Upload):   copy-rpi main.c 192.168.1.50:/home/coder"
+        echo "Example (Download): copy-rpi 192.168.1.50:/home/coder/main.c ."
+        # Exit with error status when arguments are missing
+        return 1
+    fi
 
+    local key_path="/usr/share/coder/fsp-dev-test-agent"
+    local src="$1"
+    local dst="$2"
+
+    # Prepend user "coder@" if the argument specifies a remote host
+    if [[ "$src" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+: ]]; then
+        src="coder@$src"
+    fi
+
+    # Prepend user "coder@" if the destination specifies a remote host
+    if [[ "$dst" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+: ]]; then
+        dst="coder@$dst"
+    fi
+
+    # Execute secure copy
+    scp -i "$key_path" -r "$src" "$dst"
+}
