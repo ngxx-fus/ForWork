@@ -25,7 +25,7 @@ Override specific parameters:
 ================================================================================
 """
 
-# default parameters
+# Default parameters
 JLINK_PATH              = r"/home/coder/workspace/JLink_V950/JLinkExe"
 RTT_LOGGER_PATH         = r"/home/coder/workspace/JLink_V950/JLinkRTTLoggerExe"
 PATH_TEST_INFO          = r"build/r_gpt/ra8d1_ek/gcc/test_info.yml"
@@ -44,19 +44,37 @@ LOGGER_TIMEOUT_SEC      = 30
 RUN_SPECIFIED_BUILD     = ""
 LOG_DIR_PATH            = r"./.JLinkLogPath"
 
+# Flash detection phases (Keyword, Status, Percentage)
+FLASH_DETECTION_LIST = [
+    ("J-Link Command File read successfully.",  "Init",                 5),
+    ("Firmware: J-Link OB-",                    "Connecting",           10),
+    ("InitTarget() end - Took",                 "Connected",            15),
+    ("Downloading file",                        "Flashing",             40),
+    ("J-Link>r",                                "Reset",                80),
+    ("J-Link>g",                                "Start",                90),
+    ("Script processing completed",             "Done",                 100),
+]
+
+EXEC_ACTION_LIST = [
+    ("Terminated",                              "Stop exec"),
+    ("ShowError",                               "Show all error entire the error line")
+]
+
+EXEC_DETECTION_LIST = [
+    ("Shutting down... Done.",                  "Shutdown",             "Action=Terminated"),
+    ("ERROR: Can not connect to J-Link",        "Error",                "Action=ShowError,Terminated")
+]
 
 def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_number, ip, log_dir_path):
-    # Clean up old log directory if it exists
+    # Clean up old logs
     if os.path.exists(log_dir_path):
         shutil.rmtree(log_dir_path)
         
     os.makedirs(log_dir_path, exist_ok=True)
 
-    # Clean up individual log file
     if os.path.exists(log_path):
         os.remove(log_path)
         
-    # Clean up accumulated log file
     if os.path.exists(log_acc_path):
         os.remove(log_acc_path)
 
@@ -69,7 +87,7 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
     if not data:
         return
 
-    # Iterate through all top-level categories
+    # Iterate through configuration
     for category_name, category_data in data.items():
         if not isinstance(category_data, dict):
             continue
@@ -95,7 +113,7 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
             exec_log_file = os.path.join(log_dir_path, f"{config_name}_exec.log")
             logger_stdout_file = os.path.join(log_dir_path, f"{config_name}_rtt_tool.log")
 
-            # Generate J-Link Script for flashing
+            # Generate J-Link Script
             with open(script_path, 'w') as script_file:
                 script_file.write("speed 4000\n")
                 if dependencies:
@@ -122,19 +140,19 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
             print(f"\n\n============================================================")
             print(f"--- Flashing device for [{category_name}] {config_name} ---")
             
-            # Execute flash command with live percentage tracking based on log phases
+            # Execute flash command
             with open(flash_log_file, 'w') as flash_out:
                 flash_process = subprocess.Popen(flash_cmd, stdout=flash_out, stderr=subprocess.STDOUT)
                 
                 flash_start_time = time.time()
                 last_read_pos = 0
                 current_status = "Connecting & Initializing..."
-                estimated_pct = 10
+                estimated_pct = 0
                 
                 while flash_process.poll() is None:
                     elapsed = int(time.time() - flash_start_time)
                     
-                    # Read the flash log file live to catch phases and update percentage
+                    # Parse flash log live to update status
                     if os.path.exists(flash_log_file):
                         try:
                             with open(flash_log_file, 'r', errors='ignore') as f:
@@ -142,32 +160,27 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
                                 content = f.read()
                                 if content:
                                     last_read_pos = f.tell()
-                                    if "Prepare" in content:
-                                        current_status = "Preparing flash regions..."
-                                        estimated_pct = 30
-                                    if "Erase" in content:
-                                        current_status = "Erasing flash sectors..."
-                                        estimated_pct = 50
-                                    if "Program" in content:
-                                        current_status = "Programming binary data..."
-                                        estimated_pct = 75
-                                    if "Verify" in content:
-                                        current_status = "Verifying written data..."
-                                        estimated_pct = 90
+                                    # Match phases from detection list
+                                    for keyword, phase, pct in FLASH_DETECTION_LIST:
+                                        if keyword in content:
+                                            current_status = phase
+                                            estimated_pct = pct
                         except Exception:
                             pass
                     
-                    # Print dynamic status with percentage and elapsed time on the same line
-                    sys.stdout.write(f"\r    -> [{estimated_pct:3d}%] {current_status} ({elapsed}s)")
+                    # Print status padded to exactly 100 characters to overwrite previous line
+                    status_msg = f"    -> [{estimated_pct:3d}%] {current_status} ({elapsed}s)"
+                    sys.stdout.write(f"\r{status_msg:<100}")
                     sys.stdout.flush()
                     time.sleep(0.3)
                 
-                # Finalize progress bar on completion
+                # Finalize progress
                 total_flash_time = int(time.time() - flash_start_time)
-                sys.stdout.write(f"\r    -> [100%] Flashing completed successfully in {total_flash_time}s.          \n")
+                done_msg = f"    -> [100%] Flashing completed successfully in {total_flash_time}s."
+                sys.stdout.write(f"\r{done_msg:<100}\n")
                 sys.stdout.flush()
 
-            # Ensure old RTT logs are deleted before logger starts
+            # Prepare for logging
             if os.path.exists(log_path):
                 os.remove(log_path)
 
@@ -192,24 +205,34 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
             print(f"--- Starting execution for [{category_name}] {config_name} ---")
             print(f"============================================================\n")
             
-            # Redirect logger stdout/stderr to a dedicated file to prevent console clutter
+            # Start RTT Logger
             tool_out = open(logger_stdout_file, 'w')
             logger_process = subprocess.Popen(log_cmd, stdout=tool_out, stderr=subprocess.STDOUT)
             
             start_time = time.time()
             last_pos = 0
+            tool_last_pos = 0
             current_log = ""
+            current_tool_log = ""
             timeout_occurred = False
+            terminate_early = False
+            exec_status = ""
+            triggered_errors = set()
+            process_exited = False
 
             while True:
-                # Check for execution timeout
+                # Check if tool process died unexpectedly
+                if logger_process.poll() is not None:
+                    process_exited = True
+
+                # Check timeout
                 if (time.time() - start_time) > LOGGER_TIMEOUT_SEC:
-                    print(f"\n[TIMEOUT] Execution exceeded {LOGGER_TIMEOUT_SEC} seconds. Terminating RTT Logger...\n")
+                    print(f"\n[TIMEOUT] Execution exceeded {LOGGER_TIMEOUT_SEC} seconds. Terminating...\n")
                     logger_process.terminate()
                     timeout_occurred = True
                     break
                 
-                # Safely read appended data from RTT log file
+                # 1. Safely read target RTT output
                 if os.path.exists(log_path):
                     try:
                         file_size = os.path.getsize(log_path)
@@ -219,63 +242,101 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
                                 new_bytes = log_file.read()
                                 last_pos = log_file.tell()
                                 
-                                new_data = new_bytes.decode('utf-8', errors='replace')
-                                if new_data:
-                                    print(new_data, end='', flush=True)
-                                    current_log += new_data
-                                    
-                            # Check for completion flag
-                            if "FSP TESTS ALLDONE" in current_log:
-                                time.sleep(0.5)
-                                logger_process.terminate()
-                                break
+                            new_data = new_bytes.decode('utf-8', errors='replace')
+                            if new_data:
+                                print(new_data, end='', flush=True)
+                                current_log += new_data
                     except Exception:
                         pass
+
+                # 2. Safely read Tool's own stdout/stderr
+                if os.path.exists(logger_stdout_file):
+                    try:
+                        with open(logger_stdout_file, 'r', errors='replace') as tool_file:
+                            tool_file.seek(tool_last_pos)
+                            new_tool_data = tool_file.read()
+                            if new_tool_data:
+                                tool_last_pos = tool_file.tell()
+                                current_tool_log += new_tool_data
+                    except Exception:
+                        pass
+                
+                # Combine both logs to detect errors at any level (Tool level or Target level)
+                combined_log = current_log + "\n" + current_tool_log
+
+                # Check execution errors and early termination
+                for keyword, status, action_str in EXEC_DETECTION_LIST:
+                    if keyword in combined_log and keyword not in triggered_errors:
+                        triggered_errors.add(keyword)
+                        actions = action_str.replace("Action=", "").split(",")
+                        
+                        if "ShowError" in actions:
+                            error_line = next((line for line in combined_log.splitlines() if keyword in line), "Unknown Error")
+                            print(f"\n[ERROR DETECTED] {error_line}")
+                        
+                        if "Terminated" in actions:
+                            print(f"\n[TERMINATED EARLY] Status: {status}")
+                            exec_status = f"FAILED ({status})"
+                            time.sleep(0.5)
+                            logger_process.terminate()
+                            terminate_early = True
+                            break
+                            
+                if terminate_early:
+                    break
+
+                # Check normal completion
+                if "FSP TESTS ALLDONE" in current_log:
+                    time.sleep(0.5)
+                    logger_process.terminate()
+                    break
+
+                # If process died and we finished our final read iteration, break out
+                if process_exited:
+                    if not terminate_early and "FSP TESTS ALLDONE" not in current_log:
+                        exec_status = "FAILED (Tool Exited Unexpectedly)"
+                    break
                 
                 time.sleep(0.2)
 
             logger_process.wait()
             tool_out.close()
 
-            # Final read to ensure no log data is left behind
-            if os.path.exists(log_path):
-                try:
-                    with open(log_path, 'rb') as log_file:
-                        log_file.seek(last_pos)
-                        new_bytes = log_file.read()
-                        new_data = new_bytes.decode('utf-8', errors='replace')
-                        if new_data:
-                            print(new_data, end='', flush=True)
-                            current_log += new_data
-                except Exception:
-                    pass
-                
-                # Save execution log for this specific build
-                with open(exec_log_file, 'w') as exec_out:
-                    exec_out.write(current_log)
+            # Save combined logs
+            with open(exec_log_file, 'w') as exec_out:
+                exec_out.write("=== TOOL STDOUT/STDERR ===\n")
+                exec_out.write(current_tool_log)
+                exec_out.write("\n=== TARGET RTT LOG ===\n")
+                exec_out.write(current_log)
 
-                # Parse log for test result summary
-                summary_line = "TEST TIMED OUT" if timeout_occurred else "No test summary found"
+            # Parse results
+            summary_line = "No test summary found"
+            if timeout_occurred:
+                summary_line = "TEST TIMED OUT"
+            elif exec_status:
+                summary_line = exec_status
+            else:
                 for line in current_log.splitlines():
                     if "Tests" in line and "Failures" in line and "Ignored" in line:
                         summary_line = line.strip()
                         break
-                        
-                summary_list.append(f"{summary_line} | BUILD: {app_path} | CATEGORY: {category_name}")
-                
-                # Append configuration details and execution log to the global log file
-                with open(log_acc_path, 'a') as acc_log_file:
-                    acc_log_file.write(f"###################### Flash Info: SREC={app_path} | RTTAddress={rtt_addr_raw} | Category={category_name} ######################\n")
-                    acc_log_file.write(current_log)
-                    acc_log_file.write("\n\n")
-                
-                # Clean up temporary execution log
-                try:
-                    os.remove(log_path)
-                except OSError:
-                    pass
+                    
+            summary_list.append(f"{summary_line} | BUILD: {app_path} | CATEGORY: {category_name}")
+            
+            # Append global log
+            with open(log_acc_path, 'a') as acc_log_file:
+                acc_log_file.write(f"###################### Flash Info: SREC={app_path} | RTTAddress={rtt_addr_raw} | Category={category_name} ######################\n")
+                acc_log_file.write(current_tool_log)
+                acc_log_file.write(current_log)
+                acc_log_file.write("\n\n")
+            
+            # Clean up temporary logs
+            try:
+                os.remove(log_path)
+            except OSError:
+                pass
 
-    # Print final execution summary table
+    # Print summary
     if summary_list:
         print("\n###################### FINAL TEST SUMMARY LIST ######################")
         for item in summary_list:
