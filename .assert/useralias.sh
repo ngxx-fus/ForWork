@@ -36,3 +36,19 @@ alias tmuxList="tmux ls"
 alias tmuxAttachLast="tmux a"
 alias tmuxAttach="tmux a -t"
 alias tmuxKill="tmux kill-session -t"
+
+# gitlab-runner remote
+remote-rpi() {
+    ssh -i /usr/share/coder/fsp-dev-test-agent "coder@$1"
+}
+
+find-fuzzy() {
+    # If a keyword is provided, pre-filter with fzf query; otherwise, open interactive list
+    if [ -n "$1" ]; then
+        find . -type f 2>/dev/null | fzf --query="$*"
+    else
+        find . -type f 2>/dev/null | fzf
+    fi
+}
+
+
