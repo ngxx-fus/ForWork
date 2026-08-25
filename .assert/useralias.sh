@@ -51,15 +51,23 @@ find-fuzzy() {
     fi
 }
 
+#  * @brief Transfer files between local host and remote Raspberry Pi using rsync.
+#  * @details Supports upload and download with an optional --type filter flag.
+#  *
+#  * @param --type Optional string of extensions to include (e.g., "*.srec *.yml").
+#  * @param src Source path (local file or <ip>:<remote_path>).
+#  * @param dst Destination path (local dir or <ip>:<remote_path>).
 copy-rpi() {
     local key_path="/usr/share/coder/fsp-dev-test-agent"
     local file_types=""
     local src=""
     local dst=""
+    
+    # Store regex in a variable for cross-shell compatibility
+    local ip_regex="^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:"
 
     # Parse command line arguments
     while [[ "$#" -gt 0 ]]; do
-        # Check if current argument is the type flag
         if [[ "$1" == "--type" ]]; then
             file_types="$2"
             shift 2
@@ -68,10 +76,8 @@ copy-rpi() {
             continue
         fi
 
-        # Assign source path if it is empty
         if [[ -z "$src" ]]; then
             src="$1"
-        # Assign destination path if source is already set
         elif [[ -z "$dst" ]]; then
             dst="$1"
         else
@@ -95,32 +101,36 @@ copy-rpi() {
     fi
 
     # Prepend user "coder@" if the source specifies a remote host
-    if [[ "$src" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+: ]]; then
+    if [[ "$src" =~ $ip_regex ]]; then
         src="coder@$src"
     fi
 
     # Prepend user "coder@" if the destination specifies a remote host
-    if [[ "$dst" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+: ]]; then
+    if [[ "$dst" =~ $ip_regex ]]; then
         dst="coder@$dst"
     fi
 
-    local rsync_args=(-avz -e "ssh -i $key_path")
+    # Initialize rsync arguments (-m prevents creating empty directories)
+    local rsync_args=(-avzm -e "ssh -i $key_path")
 
     # Configure rsync include and exclude rules if types are specified
     if [[ -n "$file_types" ]]; then
-        rsync_args+=("--include=*/")
+        # Strictly quote glob patterns to prevent Zsh magic-equal-substitution
+        rsync_args+=('--include=*/')
         
-        # Iterate through each specified extension
         while read -r ext; do
-            # Add include rule for non-empty extensions
             if [[ -n "$ext" ]]; then
                 rsync_args+=("--include=$ext")
             fi
         done <<< "$(echo "$file_types" | tr ' ' '\n')"
         
-        rsync_args+=("--exclude=*")
+        # Strictly quote the wildcard exclude
+        rsync_args+=('--exclude=*')
     fi
 
+    # Display the intuitive src ---> dest mapping in terminal
+    echo -e "\n\033[1;36m[COPY-RPI]\033[0m \033[1;32m$src\033[0m \033[1;33m--->\033[0m \033[1;32m$dst\033[0m\n"
+    
     # Execute file transfer via rsync
     rsync "${rsync_args[@]}" "$src" "$dst"
 }
