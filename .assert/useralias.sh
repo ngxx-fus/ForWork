@@ -52,20 +52,49 @@ find-fuzzy() {
 }
 
 copy-rpi() {
-    # Check if both source and destination arguments are provided
-    if [ "$#" -ne 2 ]; then
-        echo "Usage: copy-rpi <src> <dst>"
-        echo "Example (Upload):   copy-rpi main.c 192.168.1.50:/home/coder"
-        echo "Example (Download): copy-rpi 192.168.1.50:/home/coder/main.c ."
-        # Exit with error status when arguments are missing
+    local key_path="/usr/share/coder/fsp-dev-test-agent"
+    local file_types=""
+    local src=""
+    local dst=""
+
+    # Parse command line arguments
+    while [[ "$#" -gt 0 ]]; do
+        # Check if current argument is the type flag
+        if [[ "$1" == "--type" ]]; then
+            file_types="$2"
+            shift 2
+            
+            # Proceed to the next argument iteration
+            continue
+        fi
+
+        # Assign source path if it is empty
+        if [[ -z "$src" ]]; then
+            src="$1"
+        # Assign destination path if source is already set
+        elif [[ -z "$dst" ]]; then
+            dst="$1"
+        else
+            echo "Error: Too many arguments."
+            
+            # Exit function due to invalid argument count
+            return 1
+        fi
+        
+        shift
+    done
+
+    # Verify that both required paths are provided
+    if [[ -z "$src" || -z "$dst" ]]; then
+        echo "Usage: copy-rpi [--type \"*.srec *.yml\"] <src> <dst>"
+        echo "Upload:   copy-rpi --type \"*.srec *.yml\" build/ 192.168.1.50:/home/coder"
+        echo "Download: copy-rpi 192.168.1.50:/home/coder/project ."
+        
+        # Exit function due to missing arguments
         return 1
     fi
 
-    local key_path="/usr/share/coder/fsp-dev-test-agent"
-    local src="$1"
-    local dst="$2"
-
-    # Prepend user "coder@" if the argument specifies a remote host
+    # Prepend user "coder@" if the source specifies a remote host
     if [[ "$src" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+: ]]; then
         src="coder@$src"
     fi
@@ -75,6 +104,23 @@ copy-rpi() {
         dst="coder@$dst"
     fi
 
-    # Execute secure copy
-    scp -i "$key_path" -r "$src" "$dst"
+    local rsync_args=(-avz -e "ssh -i $key_path")
+
+    # Configure rsync include and exclude rules if types are specified
+    if [[ -n "$file_types" ]]; then
+        rsync_args+=("--include=*/")
+        
+        # Iterate through each specified extension
+        while read -r ext; do
+            # Add include rule for non-empty extensions
+            if [[ -n "$ext" ]]; then
+                rsync_args+=("--include=$ext")
+            fi
+        done <<< "$(echo "$file_types" | tr ' ' '\n')"
+        
+        rsync_args+=("--exclude=*")
+    fi
+
+    # Execute file transfer via rsync
+    rsync "${rsync_args[@]}" "$src" "$dst"
 }
