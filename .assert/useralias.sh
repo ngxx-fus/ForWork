@@ -42,8 +42,19 @@ remote-rpi() {
     ssh -i /usr/share/coder/fsp-dev-test-agent "coder@$1"
 }
 
+#  * @brief Find files interactively or with a pre-filter using fzf.
+#  * @param $1 Optional keyword to pre-filter the search.
+#  * @return 0 on success, 1 if fzf is not installed.
 find-fuzzy() {
-    # If a keyword is provided, pre-filter with fzf query; otherwise, open interactive list
+    # Check if fzf is installed
+    if ! command -v fzf >/dev/null 2>&1; then
+        echo "Error: fzf is not installed." >&2
+        
+        # Abort if dependency is missing
+        return 1
+    fi
+
+    # Branch based on whether a keyword argument is provided
     if [ -n "$1" ]; then
         find . -type f 2>/dev/null | fzf --query="$*"
     else
@@ -51,10 +62,8 @@ find-fuzzy() {
     fi
 }
 
-
 #  * @brief Transfer files between local host and remote Raspberry Pi using rsync.
 #  * @details Supports upload and download with an optional --type filter flag.
-#  *
 #  * @param --type Optional string of extensions to include (e.g., "*.srec *.yml").
 #  * @param src Source path (local file or <ip>:<remote_path>).
 #  * @param dst Destination path (local dir or <ip>:<remote_path>).
