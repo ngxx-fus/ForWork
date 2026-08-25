@@ -4,48 +4,65 @@ import yaml
 import subprocess
 import time
 import argparse
+import sys
 
 """
-Install dependencies:
-> pip install PyYAML
+================================================================================
+USAGE NOTE:
+This script automates the process of flashing firmware and capturing RTT logs 
+via SEGGER J-Link tools. It parses a YAML configuration file to get project 
+details, executes J-Link to flash the application (and its dependencies), 
+and uses JLinkRTTLogger to capture test execution outputs.
+
+Dependencies:
+    > pip install PyYAML
+
+Basic execution:
+    > python script_name.py
+
+Override specific parameters:
+    > python script_name.py -DEVICE_PART_NUMBER R7FA8D1BH -LOGGER_TIMEOUT_SEC 60 -RUN_SPECIFIED_BUILD "path/to/app.srec"
+================================================================================
 """
 
 # default parameters
 JLINK_PATH              = r"/home/coder/workspace/JLink_V950/JLinkExe"
 RTT_LOGGER_PATH         = r"/home/coder/workspace/JLink_V950/JLinkRTTLoggerExe"
-PATH_TEST_INFO          = r"build/TestInfo.yml"
+PATH_TEST_INFO          = r"build/r_gpt/ra8d1_ek/gcc/test_info.yml"
 PATH_JLINK_SCRIPT       = "CuzJFlash.jlink"
 PATH_JLINK_LOG          = "RTT_Viewer.log"
 PATH_JLINK_LOG_ACC      = "RTT_Viewer_All.log"
+
 # NOTES:
 #       ra8m2_ek:       R7KA8M2JF_CPU0
 #       ra2ek_fpb:      R7FA2E307
 #       ra2l1_ek:       R7FA2L1AB
-DEVICE_PART_NUMBER      = "R7FA2L1AB"
+#       ra8d1_ek:       R7FA8D1BH
+DEVICE_PART_NUMBER      = "R7FA8D1BH"
 DEVICE_IP               = "127.0.0.1:19020"
-LOGGER_TIMEOUT_SEC      = 15
+LOGGER_TIMEOUT_SEC      = 30
 RUN_SPECIFIED_BUILD     = ""
 LOG_DIR_PATH            = r"./.JLinkLogPath"
 
 
 def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_number, ip, log_dir_path):
-    # Check if log directory exists to clean up old logs
+    # Clean up old log directory if it exists
     if os.path.exists(log_dir_path):
         shutil.rmtree(log_dir_path)
         
     os.makedirs(log_dir_path, exist_ok=True)
 
-    # Check if individual log file exists
+    # Clean up individual log file
     if os.path.exists(log_path):
         os.remove(log_path)
         
-    # Check if accumulated log file exists
+    # Clean up accumulated log file
     if os.path.exists(log_acc_path):
         os.remove(log_acc_path)
 
     summary_list = []
 
-    # Open YAML file for reading
+    # Parse YAML configuration
     with open(info_path, 'r') as file:
         data = yaml.safe_load(file)
 
@@ -78,8 +95,9 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
             exec_log_file = os.path.join(log_dir_path, f"{config_name}_exec.log")
             logger_stdout_file = os.path.join(log_dir_path, f"{config_name}_rtt_tool.log")
 
-            # Tạo J-Link Script
+            # Generate J-Link Script for flashing
             with open(script_path, 'w') as script_file:
+                script_file.write("speed 4000\n")
                 if dependencies:
                     for dep in dependencies:
                         script_file.write(f"loadfile {dep}\n")
@@ -104,10 +122,52 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
             print(f"\n\n============================================================")
             print(f"--- Flashing device for [{category_name}] {config_name} ---")
             
+            # Execute flash command with live percentage tracking based on log phases
             with open(flash_log_file, 'w') as flash_out:
-                subprocess.run(flash_cmd, stdout=flash_out, stderr=subprocess.STDOUT)
+                flash_process = subprocess.Popen(flash_cmd, stdout=flash_out, stderr=subprocess.STDOUT)
+                
+                flash_start_time = time.time()
+                last_read_pos = 0
+                current_status = "Connecting & Initializing..."
+                estimated_pct = 10
+                
+                while flash_process.poll() is None:
+                    elapsed = int(time.time() - flash_start_time)
+                    
+                    # Read the flash log file live to catch phases and update percentage
+                    if os.path.exists(flash_log_file):
+                        try:
+                            with open(flash_log_file, 'r', errors='ignore') as f:
+                                f.seek(last_read_pos)
+                                content = f.read()
+                                if content:
+                                    last_read_pos = f.tell()
+                                    if "Prepare" in content:
+                                        current_status = "Preparing flash regions..."
+                                        estimated_pct = 30
+                                    if "Erase" in content:
+                                        current_status = "Erasing flash sectors..."
+                                        estimated_pct = 50
+                                    if "Program" in content:
+                                        current_status = "Programming binary data..."
+                                        estimated_pct = 75
+                                    if "Verify" in content:
+                                        current_status = "Verifying written data..."
+                                        estimated_pct = 90
+                        except Exception:
+                            pass
+                    
+                    # Print dynamic status with percentage and elapsed time on the same line
+                    sys.stdout.write(f"\r    -> [{estimated_pct:3d}%] {current_status} ({elapsed}s)")
+                    sys.stdout.flush()
+                    time.sleep(0.3)
+                
+                # Finalize progress bar on completion
+                total_flash_time = int(time.time() - flash_start_time)
+                sys.stdout.write(f"\r    -> [100%] Flashing completed successfully in {total_flash_time}s.          \n")
+                sys.stdout.flush()
 
-            # Đảm bảo xóa log cũ trước khi RTT Logger khởi chạy
+            # Ensure old RTT logs are deleted before logger starts
             if os.path.exists(log_path):
                 os.remove(log_path)
 
@@ -132,7 +192,7 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
             print(f"--- Starting execution for [{category_name}] {config_name} ---")
             print(f"============================================================\n")
             
-            # Chặn stdout/stderr của tool JLinkRTTLogger in ra màn hình hoặc đè vào file RTT bằng cách lưu sang file riêng
+            # Redirect logger stdout/stderr to a dedicated file to prevent console clutter
             tool_out = open(logger_stdout_file, 'w')
             logger_process = subprocess.Popen(log_cmd, stdout=tool_out, stderr=subprocess.STDOUT)
             
@@ -142,14 +202,14 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
             timeout_occurred = False
 
             while True:
-                # Kiểm tra Timeout
+                # Check for execution timeout
                 if (time.time() - start_time) > LOGGER_TIMEOUT_SEC:
                     print(f"\n[TIMEOUT] Execution exceeded {LOGGER_TIMEOUT_SEC} seconds. Terminating RTT Logger...\n")
                     logger_process.terminate()
                     timeout_occurred = True
                     break
                 
-                # Đọc log RTT an toàn
+                # Safely read appended data from RTT log file
                 if os.path.exists(log_path):
                     try:
                         file_size = os.path.getsize(log_path)
@@ -164,7 +224,7 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
                                     print(new_data, end='', flush=True)
                                     current_log += new_data
                                     
-                            # Kiểm tra test kết thúc
+                            # Check for completion flag
                             if "FSP TESTS ALLDONE" in current_log:
                                 time.sleep(0.5)
                                 logger_process.terminate()
@@ -177,7 +237,7 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
             logger_process.wait()
             tool_out.close()
 
-            # Đọc vét lần cuối
+            # Final read to ensure no log data is left behind
             if os.path.exists(log_path):
                 try:
                     with open(log_path, 'rb') as log_file:
@@ -190,11 +250,11 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
                 except Exception:
                     pass
                 
-                # Lưu file exec riêng của config
+                # Save execution log for this specific build
                 with open(exec_log_file, 'w') as exec_out:
                     exec_out.write(current_log)
 
-                # Parse kết quả test
+                # Parse log for test result summary
                 summary_line = "TEST TIMED OUT" if timeout_occurred else "No test summary found"
                 for line in current_log.splitlines():
                     if "Tests" in line and "Failures" in line and "Ignored" in line:
@@ -203,19 +263,19 @@ def execute_jlink_workflow(info_path, script_path, log_path, log_acc_path, part_
                         
                 summary_list.append(f"{summary_line} | BUILD: {app_path} | CATEGORY: {category_name}")
                 
-                # Ghi vào file tổng
+                # Append configuration details and execution log to the global log file
                 with open(log_acc_path, 'a') as acc_log_file:
                     acc_log_file.write(f"###################### Flash Info: SREC={app_path} | RTTAddress={rtt_addr_raw} | Category={category_name} ######################\n")
                     acc_log_file.write(current_log)
                     acc_log_file.write("\n\n")
                 
-                # Dọn file log tạm
+                # Clean up temporary execution log
                 try:
                     os.remove(log_path)
                 except OSError:
                     pass
 
-    # In bảng tổng kết
+    # Print final execution summary table
     if summary_list:
         print("\n###################### FINAL TEST SUMMARY LIST ######################")
         for item in summary_list:
@@ -239,12 +299,14 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
-    execute_jlink_workflow(
-        args.PATH_TEST_INFO, 
-        args.PATH_JLINK_SCRIPT, 
-        args.PATH_JLINK_LOG, 
-        args.PATH_JLINK_LOG_ACC, 
-        args.DEVICE_PART_NUMBER, 
-        args.DEVICE_IP,
-        args.LOG_DIR_PATH
+    (
+        execute_jlink_workflow(
+            args.PATH_TEST_INFO, 
+            args.PATH_JLINK_SCRIPT, 
+            args.PATH_JLINK_LOG, 
+            args.PATH_JLINK_LOG_ACC, 
+            args.DEVICE_PART_NUMBER, 
+            args.DEVICE_IP,
+            args.LOG_DIR_PATH
+        )
     )
