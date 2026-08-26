@@ -100,10 +100,14 @@ export URL_CLANGD="https://github.com/clangd/clangd/releases/download/${CLANGD_V
 # Helper functions
 # ===========================================================================
 
-/*
- * @brief Ensure the given directory exists, creating it (with parents) if needed.
- * @param target_dir Path to the directory to create.
- */
+# ---------------------------------------------------------------------------
+# MakeThisDirExist <path>
+# Ensure the given directory exists, creating it (with parents) if needed.
+# Args:
+#   $1 : Path to the directory to create.
+# Returns:
+#   0  : Directory exists or was created successfully.
+#   1  : Wrong number of arguments or failed to create directory.
 MakeThisDirExist() {
     if [[ $# -ne 1 ]]; then
         echo "[ERR][MakeThisDirExist] Wrong number of args (expected 1, got $#)"
@@ -125,11 +129,15 @@ MakeThisDirExist() {
     fi
 }
 
-/*
- * @brief Append a line to a file only if it does not already exist in the file.
- * @param target_file Target file path.
- * @param line Line to append.
- */
+# ---------------------------------------------------------------------------
+# AppendIfNotExist <file> <line>
+# Append a line to a file only if it does not already exist in the file.
+# Args:
+#   $1 : Target file path.
+#   $2 : Line to append.
+# Returns:
+#   0  : Appended or line already exists.
+#   1  : Wrong number of arguments.
 AppendIfNotExist() {
     if [[ $# -ne 2 ]]; then
         echo "[ERR][AppendIfNotExist] Wrong number of args (expected 2, got $#)"
@@ -147,10 +155,14 @@ AppendIfNotExist() {
     fi
 }
 
-/*
- * @brief Extract base filename located after the last slash and before the last dot.
- * @param path Input path string.
- */
+# ---------------------------------------------------------------------------
+# GetBaseName <path>
+# Extract base filename located after the last slash and before the last dot.
+# Args:
+#   $1 : Input path string.
+# Returns:
+#   0  : Extracted basename successfully.
+#   1  : Invalid path format (no dot or trailing slash).
 GetBaseName() {
     path="$1"
 
@@ -170,11 +182,14 @@ GetBaseName() {
     return 0
 }
 
-/*
- * @brief Check if the provided URL is reachable.
- * @param target_url The URL to check.
- * @return 0 if reachable, 1 otherwise.
- */
+# ---------------------------------------------------------------------------
+# PerformConnectionCheck <url>
+# Check if the provided URL is reachable.
+# Args:
+#   $1 : Target web address.
+# Returns:
+#   0  : Target reachable or feature disabled.
+#   1  : Missing argument or target unreachable.
 PerformConnectionCheck() {
     if [[ $# -ne 1 ]]; then
         echo "[ERR][PerformConnectionCheck] Missing URL argument."
@@ -188,7 +203,6 @@ PerformConnectionCheck() {
     fi
 
     echo "[INF][PerformConnectionCheck] Testing connection to: ${target_url}"
-    # Use curl to fetch headers only, silently, follow redirects, fail on errors
     if curl --output /dev/null --silent --head --fail --location "${target_url}"; then
         echo "[INF][PerformConnectionCheck] Connection OK."
         return 0
@@ -197,11 +211,14 @@ PerformConnectionCheck() {
     fi
 }
 
-/*
- * @brief Check if the provided URL downloads an actual file rather than an HTML page.
- * @param target_url The URL to check.
- * @return 0 if valid file, 1 if HTML page.
- */
+# ---------------------------------------------------------------------------
+# PerformDownloadCheck <url>
+# Check if the provided URL downloads an actual file rather than an HTML page.
+# Args:
+#   $1 : Target web address.
+# Returns:
+#   0  : Valid file format or feature disabled.
+#   1  : Missing argument or returned HTML page.
 PerformDownloadCheck() {
     if [[ $# -ne 1 ]]; then
         echo "[ERR][PerformDownloadCheck] Missing URL argument."
@@ -217,7 +234,6 @@ PerformDownloadCheck() {
     echo "[INF][PerformDownloadCheck] Validating file type for: ${target_url}"
     local content_type
     
-    # Fetch headers and grep for Content-Type
     content_type=$(curl -sI -L "${target_url}" | grep -i -E "^Content-Type:" | tail -n 1)
 
     if echo "${content_type}" | grep -q -i "text/html"; then
@@ -229,13 +245,17 @@ PerformDownloadCheck() {
     fi
 }
 
-/*
- * @brief Download, extract, and install a specific JLink version.
- * @param enable_flag   Installation enable flag (1 to run, 0 to skip).
- * @param tag_name      GitHub release tag.
- * @param file_name     Archive file name (e.g., .tgz).
- * @param dest_name     Destination folder name inside workspace.
- */
+# ---------------------------------------------------------------------------
+# InstallJLinkVersion <enable_flag> <tag_name> <file_name> <dest_name>
+# Download, extract, and install a specific JLink version.
+# Args:
+#   $1 : Installation enable flag (1 to run, 0 to skip).
+#   $2 : GitHub release tag.
+#   $3 : Archive file name (e.g., .tgz).
+#   $4 : Destination folder name inside workspace.
+# Returns:
+#   0  : Success or skipped.
+#   1  : Network, file format, or extraction error.
 InstallJLinkVersion() {
     local enable_flag="$1"
     local tag_name="$2"
