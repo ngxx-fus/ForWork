@@ -8,6 +8,10 @@ Descriptions:
 - `ERR/MINOR`      : Main feature is usable, but fails under specific conditions or edge cases.
 - `RELEASE/STABLE` : Fully implemented, tested, and ready for use.
 
+## Note
+
+> Currently migrate to V2
+
 ## About
 This script is designed to set up an Ubuntu-based Coder workspace. It automates the following tasks:
 - Installs Neovim (optional) and applies custom configurations with prerequisites.
