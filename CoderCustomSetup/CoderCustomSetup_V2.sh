@@ -7,6 +7,7 @@
 # - Install SEGGER J-Link tools
 # - Setup desktop background wallpaper
 # - Install Clangd
+# - Install custom APT packages
 #
 # Usage: bash setup.sh
 ###############################################################################
@@ -29,7 +30,13 @@ export SETUP_JLINK_V950_EN=1
 export SETUP_JLINK_V950_ARM_EN=1
 export SETUP_JLINK_V970_EN=1
 export SETUP_JLINK_V970_ARM_EN=1
-export CLEANUP_BEFORE_EXIT_EN=1
+
+export SETUP_APT_INSTALL_LIST_EN=1
+export SETUP_APT_INSTALL_LIST=(
+    "btop"
+    "tree"
+    "duf"
+)
 
 # ===========================================================================
 # Global private vars
@@ -90,10 +97,10 @@ export URL_CLANGD="https://github.com/clangd/clangd/releases/download/${CLANGD_V
 # Helper functions
 # ===========================================================================
 
-# /*
-#  * @brief Ensure the given directory exists, creating it (with parents) if needed.
-#  * @param target_dir Path to the directory to create.
-#  */
+/*
+ * @brief Ensure the given directory exists, creating it (with parents) if needed.
+ * @param target_dir Path to the directory to create.
+ */
 MakeThisDirExist() {
     # Check argument count
     if [[ $# -ne 1 ]]; then
@@ -122,11 +129,11 @@ MakeThisDirExist() {
     fi
 }
 
-# /*
-#  * @brief Append a line to a file only if it does not already exist in the file.
-#  * @param target_file Target file path.
-#  * @param line Line to append.
-#  */
+/*
+ * @brief Append a line to a file only if it does not already exist in the file.
+ * @param target_file Target file path.
+ * @param line Line to append.
+ */
 AppendIfNotExist() {
     # Check argument count
     if [[ $# -ne 2 ]]; then
@@ -147,10 +154,10 @@ AppendIfNotExist() {
     fi
 }
 
-# /*
-#  * @brief Extract base filename located after the last slash and before the last dot.
-#  * @param path Input path string.
-#  */
+/*
+ * @brief Extract base filename located after the last slash and before the last dot.
+ * @param path Input path string.
+ */
 GetBaseName() {
     path="$1"
 
@@ -179,13 +186,13 @@ GetBaseName() {
     return 0
 }
 
-# /*
-#  * @brief Download, extract, and install a specific JLink version.
-#  * @param enable_flag   Installation enable flag (1 to run, 0 to skip).
-#  * @param tag_name      GitHub release tag.
-#  * @param file_name     Archive file name (e.g., .tgz).
-#  * @param dest_name     Destination folder name inside workspace.
-#  */
+/*
+ * @brief Download, extract, and install a specific JLink version.
+ * @param enable_flag   Installation enable flag (1 to run, 0 to skip).
+ * @param tag_name      GitHub release tag.
+ * @param file_name     Archive file name (e.g., .tgz).
+ * @param dest_name     Destination folder name inside workspace.
+ */
 InstallJLinkVersion() {
     local enable_flag="$1"
     local tag_name="$2"
@@ -273,13 +280,19 @@ MakeThisDirExist "${FOLDER_DOWNLOADS}"
 MakeThisDirExist "${FOLDER_FUS}"
 
 # ===========================================================================
-# Add repository (optional)
+# Add repository & Install APT Packages
 # ===========================================================================
 if [[ "${SETUP_ADD_APT_REPO_EN}" == "1" ]]; then
     echo ">>> Updating apt repositories..."
     export DEBIAN_FRONTEND=noninteractive
     sudo add-apt-repository universe -y
     sudo apt update -y
+fi
+
+if [[ "${SETUP_APT_INSTALL_LIST_EN}" == "1" ]]; then
+    echo ">>> Installing custom APT packages..."
+    export DEBIAN_FRONTEND=noninteractive
+    sudo apt install -y "${SETUP_APT_INSTALL_LIST[@]}"
 fi
 
 # ===========================================================================
