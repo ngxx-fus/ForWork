@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env zsh
 ###############################################################################
 # Setup script for Coder workspace (Ubuntu-based)
 # - Install Neovim + custom config
@@ -9,7 +9,7 @@
 # - Install Clangd
 # - Install custom APT packages
 #
-# Usage: bash setup.sh
+# Usage: bash CoderCustomSetup_V2.sh
 ###############################################################################
 
 set -e  # Exit immediately on error
