@@ -23,199 +23,415 @@ LOGGER_TIMEOUT_SEC  = 60
 RUN_SPECIFIED_BUILD = ""
 LOG_DIR_PATH        = r"./.JLinkLogPath"
 
-"""
-/*
- * @brief Parses YAML config, flashes device and retrieves RTT logs using direct J-Link DLL via pylink.
- *        Parses log content at runtime to generate a summary list of test results.
- * @param info_path Path to the YAML configuration file.
- * @param log_acc_path Path to store the accumulated RTT logs.
- * @param part_number Target MCU part number.
- * @param ip Device IP address, can be empty.
- * @param log_dir_path Path to the directory where individual build logs will be saved.
- */
-"""
-def execute_jlink_workflow(info_path, log_acc_path, part_number, ip, log_dir_path):
-    # Control flow: Check if log directory exists to clean up old logs
+def create_flash_plan(category_name, project):
+    """
+    Create and validate an ordered list of firmware images to flash.
+
+    For a TrustZone (TZ) build, the project is identified when either the
+    category name or the project name is "tz", case-insensitively. The Secure
+    Code (SC) image must be listed under ``dependencies`` and is always flashed
+    before the Non-Secure/Non-Secure Callable (NS/NSC) application image.
+
+    Flash order:
+        TZ build:
+            1. Secure Code (SC) image(s) from ``dependencies``
+            2. NS/NSC application image from ``application``
+
+        Non-TZ build:
+            1. Dependency image(s) from ``dependencies``
+            2. Main application image from ``application``
+
+    All image paths are validated before any target programming begins. This
+    prevents a partially programmed target when an image path is missing or
+    invalid.
+
+    Args:
+        category_name (str):
+            Top-level category name from the YAML configuration, such as
+            ``default`` or ``tz``.
+
+        project (dict):
+            Project information read from the YAML configuration. Expected
+            fields are:
+
+            - ``application`` (str): Path to the main application image.
+            - ``dependencies`` (list[str]): Paths to dependency images.
+            - ``name`` (str, optional): Project type/name, such as ``tz``.
+
+    Returns:
+        tuple:
+            A tuple containing:
+
+            - ``is_tz_build`` (bool): True when the project is a TZ build.
+            - ``flash_plan`` (list[tuple[str, str]]): Ordered pairs of
+              ``(image_type, image_path)`` to be flashed sequentially.
+
+    Raises:
+        ValueError:
+            If the application path is empty, ``dependencies`` is not a list,
+            a TZ build has no secure dependency, or an image path is empty.
+
+        FileNotFoundError:
+            If any application or dependency image does not exist.
+
+    Notes:
+        The caller must execute ``flash_plan`` in the returned order and must
+        not reset, erase, or disconnect the target between the SC and NS/NSC
+        programming operations.
+    """
+    application = project.get("application", "")
+    dependencies = project.get("dependencies", []) or []
+    project_name = str(project.get("name", ""))
+
+    is_tz_build = (
+        str(category_name).strip().lower() == "tz"
+        or project_name.strip().lower() == "tz"
+    )
+
+    if not application:
+        raise ValueError("No application image is configured")
+
+    if not isinstance(dependencies, list):
+        raise ValueError("'dependencies' must be a list")
+
+    flash_plan = []
+
+    if is_tz_build:
+        if not dependencies:
+            raise ValueError(
+                "TZ build has no secure image in 'dependencies'. "
+                "The secure image must be flashed before the non-secure image."
+            )
+
+        for secure_image in dependencies:
+            flash_plan.append(("SC", secure_image))
+
+        flash_plan.append(("NS/NSC", application))
+    else:
+        for dependency in dependencies:
+            flash_plan.append(("Dependency", dependency))
+
+        flash_plan.append(("Application", application))
+
+    # Validate all files before changing the target.
+    for image_type, image_path in flash_plan:
+        if not image_path:
+            raise ValueError(f"{image_type} image path is empty")
+
+        if not os.path.isfile(image_path):
+            raise FileNotFoundError(
+                f"{image_type} image does not exist: {image_path}"
+            )
+
+    return is_tz_build, flash_plan
+
+def execute_jlink_workflow(
+    info_path,
+    log_acc_path,
+    part_number,
+    ip,
+    log_dir_path
+):
+    """
+    /*
+    * @brief Parses YAML config, flashes device and retrieves RTT logs using direct J-Link DLL via pylink.
+    *        Parses log content at runtime to generate a summary list of test results.
+    * @param info_path Path to the YAML configuration file.
+    * @param log_acc_path Path to store the accumulated RTT logs.
+    * @param part_number Target MCU part number.
+    * @param ip Device IP address, can be empty.
+    * @param log_dir_path Path to the directory where individual build logs will be saved.
+    */
+    """
+    # Clean old log directory.
     if os.path.exists(log_dir_path):
         shutil.rmtree(log_dir_path)
-        
-    os.makedirs(log_dir_path)
 
-    # Control flow: Check if accumulated log file exists
+    os.makedirs(log_dir_path, exist_ok=True)
+
+    # Clean accumulated log.
     if os.path.exists(log_acc_path):
         os.remove(log_acc_path)
 
     summary_list = []
 
-    # Control flow: Handle file operations for YAML reading
+    # Load YAML file.
     try:
-        # Control flow: Open file for reading
-        with open(info_path, 'r') as file:
+        with open(info_path, "r", encoding="utf-8") as file:
             data = yaml.safe_load(file)
-    # Control flow: Catch file exception
-    except Exception:
-        # Jump statement: Exit if file cannot be loaded
+    except Exception as e:
+        print(f"Failed to load YAML file '{info_path}': {e}")
         return
 
-    # Control flow: Check if YAML data is valid
     if not data:
-        # Jump statement: Exit function if YAML is empty
+        print(f"YAML file is empty: {info_path}")
         return
 
-    # Control flow: Instantiate JLink controller (auto-detects DLL)
-    jlink = pylink.JLink()
-
-    # Control flow: Iterate through all top-level categories
+    # Iterate through all categories.
     for category_name, category_data in data.items():
-        # Control flow: Check if category data is a dictionary
         if not isinstance(category_data, dict):
-            # Jump statement: Skip to next category on invalid structure
+            print(f"Skipping invalid category: {category_name}")
             continue
-            
-        # Control flow: Iterate through each project configuration
+
+        # Iterate through configurations.
         for config_name, config_data in category_data.items():
-            projects = config_data.get('projects', [])
+            if not isinstance(config_data, dict):
+                print(
+                    f"Skipping invalid configuration: "
+                    f"[{category_name}] {config_name}"
+                )
+                continue
 
-            # Control flow: Check if projects list is empty
+            projects = config_data.get("projects", [])
+
             if not projects:
-                # Jump statement: Skip to next configuration if no projects
                 continue
 
-            app_path = projects[0].get('application', '')
-            dependencies = projects[0].get('dependencies', [])
-            rtt_addr_raw = str(projects[0].get('rtt_address', ''))
-            
-            # Control flow: Check if a specific build is requested and does not match the current app
-            if RUN_SPECIFIED_BUILD and (RUN_SPECIFIED_BUILD != app_path):
-                # Jump statement: Skip to next configuration as it does not match the specified build
+            project = projects[0]
+
+            if not isinstance(project, dict):
+                print(
+                    f"Invalid project data for "
+                    f"[{category_name}] {config_name}"
+                )
                 continue
 
-            # Control flow: Check if RTT address is valid and convert to integer
-            if rtt_addr_raw and rtt_addr_raw.startswith('0x'):
-                rtt_addr = int(rtt_addr_raw, 16)
-            # Control flow: Check if RTT address is valid without hex prefix
-            elif rtt_addr_raw:
-                rtt_addr = int(rtt_addr_raw, 16)
-            else:
-                rtt_addr = None
+            app_path = project.get("application", "")
+            rtt_addr_raw = str(project.get("rtt_address", "")).strip()
 
-            exec_log_file = os.path.join(log_dir_path, f"{config_name}_exec.log")
+            # Run only the requested build if specified.
+            if RUN_SPECIFIED_BUILD and RUN_SPECIFIED_BUILD != app_path:
+                continue
 
-            print(f"\n\n\n============================================================")
-            print(f"--- Flashing device for [{category_name}] {config_name} ---")
-
-            # Control flow: Try to execute hardware J-Link operations
+            # Parse RTT address as hexadecimal.
             try:
-                current_log = ""
-                timeout_occurred = False
+                if rtt_addr_raw:
+                    rtt_addr = int(rtt_addr_raw, 16)
+                else:
+                    rtt_addr = None
+            except ValueError:
+                print(
+                    f"Invalid RTT address '{rtt_addr_raw}' for "
+                    f"[{category_name}] {config_name}"
+                )
+                continue
 
-                # Control flow: Connect using IP or USB
+            # Include category in filename to prevent duplicate names.
+            exec_log_file = os.path.join(
+                log_dir_path,
+                f"{category_name}_{config_name}_exec.log"
+            )
+
+            print("\n\n============================================================")
+            print(
+                f"--- Flashing device for "
+                f"[{category_name}] {config_name} ---"
+            )
+
+            current_log = ""
+            timeout_occurred = False
+            operation_error = None
+            jlink_opened = False
+            rtt_started = False
+
+            # Create a separate J-Link object for each build.
+            jlink = pylink.JLink()
+
+            try:
+                # Create and validate flash order before connecting.
+                is_tz_build, flash_plan = create_flash_plan(
+                    category_name,
+                    project
+                )
+
+                if is_tz_build:
+                    print("TZ flash sequence:")
+                    print("  1. SC image(s) from dependencies")
+                    print("  2. NS/NSC image from application")
+                else:
+                    print("Standard flash sequence:")
+                    print("  1. Dependencies")
+                    print("  2. Application")
+
+                # Connect to J-Link.
                 if ip:
                     jlink.open(ip_addr=ip)
                 else:
                     jlink.open()
 
+                jlink_opened = True
+
                 jlink.set_tif(pylink.enums.JLinkInterfaces.SWD)
                 jlink.connect(part_number)
                 jlink.reset(halt=True)
 
-                # Control flow: Iterate through dependencies to flash
-                for dep in dependencies:
-                    print(f"Flashing dependency: {dep}")
-                    jlink.flash_file(dep, 0)
+                # Flash all images in the required order.
+                #
+                # For TZ:
+                #   dependencies (SC) -> application (NS/NSC)
+                #
+                # There is no reset or disconnect between images.
+                for index, (image_type, image_path) in enumerate(
+                    flash_plan,
+                    start=1
+                ):
+                    print(
+                        f"[{index}/{len(flash_plan)}] "
+                        f"Flashing {image_type}: {image_path}"
+                    )
 
-                print(f"Flashing application: {app_path}")
-                jlink.flash_file(app_path, 0)
+                    # flash_file() completes before the next statement,
+                    # so the image order is guaranteed.
+                    jlink.flash_file(image_path, 0)
 
-                print(f"--- Starting execution for [{category_name}] {config_name} ---")
-                print(f"============================================================\n")
+                    print(
+                        f"[{index}/{len(flash_plan)}] "
+                        f"{image_type} completed"
+                    )
 
+                print(
+                    f"--- Starting execution for "
+                    f"[{category_name}] {config_name} ---"
+                )
+                print(
+                    "============================================================\n"
+                )
+
+                # Reset only after both SC and NS/NSC are programmed.
                 jlink.reset(halt=False)
                 time.sleep(0.1)
 
-                # Control flow: Start RTT based on provided address
+                # Start RTT.
                 if rtt_addr is not None:
                     jlink.rtt_start(rtt_addr)
                 else:
                     jlink.rtt_start()
 
+                rtt_started = True
                 start_time = time.time()
-                current_log = ""
-                timeout_occurred = False
 
-                # Control flow: Loop continuously to pull raw RTT data from memory
+                # Read RTT output.
                 while True:
-                    # Control flow: Check if timeout limit is reached
-                    if (time.time() - start_time) > LOGGER_TIMEOUT_SEC:
-                        print(f"\n[TIMEOUT] Execution exceeded {LOGGER_TIMEOUT_SEC} seconds.\n")
+                    elapsed_time = time.time() - start_time
+
+                    if elapsed_time > LOGGER_TIMEOUT_SEC:
+                        print(
+                            f"\n[TIMEOUT] Execution exceeded "
+                            f"{LOGGER_TIMEOUT_SEC} seconds.\n"
+                        )
                         timeout_occurred = True
-                        # Jump statement: Break loop on timeout
                         break
 
-                    # Fetch up to 1024 bytes from RTT channel 0
                     rtt_data = jlink.rtt_read(0, 1024)
 
-                    # Control flow: Check if new RTT data is retrieved
                     if rtt_data:
-                        text = "".join(map(chr, rtt_data))
-                        print(text, end='', flush=True)
+                        text = bytes(rtt_data).decode(
+                            "utf-8",
+                            errors="replace"
+                        )
+
+                        print(text, end="", flush=True)
                         current_log += text
 
-                        # Control flow: Check if tests have finished
                         if "FSP TESTS ALLDONE" in current_log:
                             time.sleep(0.5)
-                            # Jump statement: Break loop after completion
                             break
 
                     time.sleep(0.01)
 
-                jlink.rtt_stop()
-                jlink.close()
-
-            # Control flow: Catch J-Link hardware or DLL exceptions
             except Exception as e:
-                print(f"JLink Operation Error: {e}")
-                # Jump statement: Pass exception to move to next project configuration
-                pass
-            
-            # Control flow: Open exec log file for writing execution data
-            with open(exec_log_file, 'w') as exec_out:
-                exec_out.write(current_log)
+                operation_error = str(e)
+                print(
+                    f"J-Link operation failed for "
+                    f"[{category_name}] {config_name}: {e}"
+                )
 
-            # Control flow: Check if timeout occurred to append special note
-            if timeout_occurred:
+            finally:
+                # Always stop RTT if it was started.
+                if rtt_started:
+                    try:
+                        jlink.rtt_stop()
+                    except Exception as e:
+                        print(f"Warning: failed to stop RTT: {e}")
+
+                # Always close J-Link if it was opened.
+                if jlink_opened:
+                    try:
+                        jlink.close()
+                    except Exception as e:
+                        print(f"Warning: failed to close J-Link: {e}")
+
+            # Write individual execution log.
+            try:
+                with open(
+                    exec_log_file,
+                    "w",
+                    encoding="utf-8"
+                ) as exec_out:
+                    exec_out.write(current_log)
+            except Exception as e:
+                print(f"Failed to write log '{exec_log_file}': {e}")
+
+            # Generate summary.
+            if operation_error:
+                summary_line = f"J-LINK ERROR: {operation_error}"
+            elif timeout_occurred:
                 summary_line = "TEST TIMED OUT"
             else:
                 summary_line = "No test summary found"
-                
-            lines = current_log.split('\n')
-            
-            # Control flow: Iterate through log lines to find metrics
-            for line in lines:
-                # Control flow: Check if line contains test metrics pattern
-                if "Tests" in line and "Failures" in line and "Ignored" in line:
-                    summary_line = line.strip()
-                    # Jump statement: Break loop once summary is found
-                    break
-                    
-            summary_list.append(f"{summary_line} | BUILD: {app_path} | CATEGORY: {category_name}")
-            
-            # Control flow: Open accumulated log file to append
-            with open(log_acc_path, 'a') as acc_log_file:
-                acc_log_file.write(f"###################### Flash Info: SREC={app_path} | RTTAddress={rtt_addr_raw} | Category={category_name} ######################\n")
-                acc_log_file.write(current_log)
-                acc_log_file.write("\n\n")
-            
-    # Control flow: Check if summary list contains items
+
+                for line in current_log.splitlines():
+                    if (
+                        "Tests" in line
+                        and "Failures" in line
+                        and "Ignored" in line
+                    ):
+                        summary_line = line.strip()
+                        break
+
+            summary_list.append(
+                f"{summary_line} "
+                f"| BUILD: {app_path} "
+                f"| CATEGORY: {category_name}"
+            )
+
+            # Append to accumulated log.
+            try:
+                with open(
+                    log_acc_path,
+                    "a",
+                    encoding="utf-8"
+                ) as acc_log_file:
+                    acc_log_file.write(
+                        "###################### "
+                        f"Flash Info: SREC={app_path} "
+                        f"| RTTAddress={rtt_addr_raw} "
+                        f"| Category={category_name} "
+                        "######################\n"
+                    )
+                    acc_log_file.write(current_log)
+                    acc_log_file.write("\n\n")
+            except Exception as e:
+                print(
+                    f"Failed to append accumulated log "
+                    f"'{log_acc_path}': {e}"
+                )
+
+    # Print final summary.
     if summary_list:
-        print("\n###################### FINAL TEST SUMMARY LIST ######################")
-        # Control flow: Iterate through summary items
+        print(
+            "\n###################### "
+            "FINAL TEST SUMMARY LIST "
+            "######################"
+        )
+
         for item in summary_list:
             print(item)
-        print("#####################################################################\n")
 
-    # Jump statement: Return successfully
-    return
+        print(
+            "########################################################"
+            "#############\n"
+        )
 
 # Control flow: Check if executed as main script
 if __name__ == "__main__":
