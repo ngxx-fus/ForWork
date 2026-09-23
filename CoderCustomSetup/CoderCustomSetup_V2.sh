@@ -25,7 +25,7 @@ export SETUP_ADD_APT_REPO_EN=1
 export SETUP_USER_ALIASES_EN=1
 export SETUP_BACKGROUND_EN=1
 export SETUP_AUTO_SET_BACKGROUND_EN=0       # only works if SETUP_BACKGROUND_EN=1
-export SETUP_CLANGD=1
+export SETUP_CLANGD_EN=1
 export SETUP_JLINK_V950_EN=1
 export SETUP_JLINK_V950_ARM_EN=1
 export SETUP_JLINK_V970_EN=1
@@ -38,6 +38,8 @@ export SETUP_APT_INSTALL_LIST_EN=1
 export SETUP_APT_INSTALL_LIST=(
     "btop" "tree" "duf" "tmux"
 )
+
+export SETUP_HCMC_TIME_EN=1
 
 # ===========================================================================
 # Global private vars
@@ -614,7 +616,7 @@ fi
 # ===========================================================================
 # Install Clangd
 # ===========================================================================
-if [[ "${SETUP_CLANGD}" == "1" ]]; then
+if [[ "${SETUP_CLANGD_EN}" == "1" ]]; then
     echo ">>> Installing Clangd (${CLANGD_VERSION})..."
 
     cd "${FOLDER_DOWNLOADS}"
@@ -660,6 +662,11 @@ if [[ "${SETUP_CLANGD}" == "1" ]]; then
 
     # Return execution context back to starting directory
     cd "${FOLDER_CURRENT}"
+fi
+
+if [[ "${SETUP_HCMC_TIME_EN}" == "1" ]]; then
+    echo ">>> Installing HCMC time zone ..."
+    sudo ln -sf /usr/share/zoneinfo/Asia/Ho_Chi_Minh /etc/localtime
 fi
 
 # ===========================================================================
