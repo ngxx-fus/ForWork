@@ -96,7 +96,9 @@ if ($dirinternal) {
 if ($zip0 -and $zip1) {
     $ZIP_PACK0 = $zip0
     $ZIP_PACK1 = $zip1
-    Write-Log "Using provided local packs: $ZIP_PACK0 and $ZIP_PACK1"
+    Write-Log "Using provided local packs:"
+    Write-Log "  -> ZIP0: $ZIP_PACK0"
+    Write-Log "  -> ZIP1: $ZIP_PACK1"
 } else {
     Write-Log "Fetching release versions from $BASE_URL ..."
     
@@ -141,18 +143,18 @@ if ($zip0 -and $zip1) {
 
     # Control flow: Only download pack 0 if not already present.
     if (-not (Test-Path -LiteralPath $ZIP_PACK0)) {
-        Write-Log "Downloading 1/2: $ZIP_PACK0"
+        Write-Log "Downloading ZIP0 (1/2): $(Split-Path $ZIP_PACK0 -Leaf) -> $ZIP_PACK0"
         Invoke-WebRequest -Uri $ZIP0_URL -OutFile $ZIP_PACK0
     } else {
-        Write-Log "File already exists: $ZIP_PACK0"
+        Write-Log "ZIP0 already exists, skipping download: $(Split-Path $ZIP_PACK0 -Leaf)"
     }
 
     # Control flow: Only download pack 1 if not already present.
     if (-not (Test-Path -LiteralPath $ZIP_PACK1)) {
-        Write-Log "Downloading 2/2: $ZIP_PACK1"
+        Write-Log "Downloading ZIP1 (2/2): $(Split-Path $ZIP_PACK1 -Leaf) -> $ZIP_PACK1"
         Invoke-WebRequest -Uri $ZIP1_URL -OutFile $ZIP_PACK1
     } else {
-        Write-Log "File already exists: $ZIP_PACK1"
+        Write-Log "ZIP1 already exists, skipping download: $(Split-Path $ZIP_PACK1 -Leaf)"
     }
     
     Write-Log "Download completed." -Level "SUCCESS"
@@ -194,7 +196,7 @@ if (-not (Test-Path -LiteralPath $DIR_INTERNAL)) {
 
 # Control flow: Abort if pack 0 zip is missing.
 if (-not (Test-Path -LiteralPath $ZIP_PACK0)) {
-    Write-Log "ZIP_PACK0 not found at: $ZIP_PACK0" -Level "ERROR"
+    Write-Log "ZIP0 not found at: $ZIP_PACK0" -Level "ERROR"
     # Jump statement: Exit script if pack 0 is missing.
     exit 1
 }
@@ -202,7 +204,7 @@ if (-not (Test-Path -LiteralPath $ZIP_PACK0)) {
 $baseName0 = [System.IO.Path]::GetFileNameWithoutExtension($ZIP_PACK0)
 $extractTarget0 = Join-Path -Path $DIR_EXTRACTED -ChildPath $baseName0
 
-Write-Log "Extracting ZIP_PACK0 to: $extractTarget0"
+Write-Log "Extracting ZIP0 ($(Split-Path $ZIP_PACK0 -Leaf)) to: $extractTarget0"
 Expand-Archive -Path $ZIP_PACK0 -DestinationPath $extractTarget0 -Force -ErrorAction Stop
 
 $extractedInternal0 = Join-Path -Path $extractTarget0 -ChildPath "internal"
@@ -214,7 +216,7 @@ if (-not (Test-Path -LiteralPath $extractedInternal0 -PathType Container)) {
     exit 1
 }
 
-Write-Log "Verified ZIP_PACK0 internal structure." -Level "SUCCESS"
+Write-Log "Verified ZIP0 internal structure." -Level "SUCCESS"
 
 ########################################################################################################################
 # ACTION 3: Extract ZIP_PACK1 and verify extracted contents
@@ -222,7 +224,7 @@ Write-Log "Verified ZIP_PACK0 internal structure." -Level "SUCCESS"
 
 # Control flow: Abort if pack 1 zip is missing.
 if (-not (Test-Path -LiteralPath $ZIP_PACK1)) {
-    Write-Log "ZIP_PACK1 not found at: $ZIP_PACK1" -Level "ERROR"
+    Write-Log "ZIP1 not found at: $ZIP_PACK1" -Level "ERROR"
     # Jump statement: Exit script if pack 1 is missing.
     exit 1
 }
@@ -230,7 +232,7 @@ if (-not (Test-Path -LiteralPath $ZIP_PACK1)) {
 $baseName1 = [System.IO.Path]::GetFileNameWithoutExtension($ZIP_PACK1)
 $extractTarget1 = Join-Path -Path $DIR_EXTRACTED -ChildPath $baseName1
 
-Write-Log "Extracting ZIP_PACK1 to: $extractTarget1"
+Write-Log "Extracting ZIP1 ($(Split-Path $ZIP_PACK1 -Leaf)) to: $extractTarget1"
 Expand-Archive -Path $ZIP_PACK1 -DestinationPath $extractTarget1 -Force -ErrorAction Stop
 
 $extractedInternal1 = Join-Path -Path $extractTarget1 -ChildPath "internal"
@@ -242,15 +244,15 @@ if (-not (Test-Path -LiteralPath $extractedInternal1 -PathType Container)) {
     exit 1
 }
 
-Write-Log "Verified ZIP_PACK1 internal structure." -Level "SUCCESS"
+Write-Log "Verified ZIP1 internal structure." -Level "SUCCESS"
 
 ########################################################################################################################
 # ACTION 4: Copy internal files into target directory
 ########################################################################################################################
-Write-Log "Copying contents from $extractedInternal0 to $DIR_INTERNAL"
+Write-Log "Copying contents from ZIP0 to $DIR_INTERNAL"
 Copy-Item -Path "$extractedInternal0\*" -Destination $DIR_INTERNAL -Recurse -Force -ErrorAction Stop
 
-Write-Log "Overwriting contents from $extractedInternal1 to $DIR_INTERNAL"
+Write-Log "Overwriting contents from ZIP1 to $DIR_INTERNAL"
 Copy-Item -Path "$extractedInternal1\*" -Destination $DIR_INTERNAL -Recurse -Force -ErrorAction Stop
 
 Write-Log "All tasks completed successfully." -Level "SUCCESS"
