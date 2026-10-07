@@ -88,6 +88,29 @@ if ($dirinternal) {
     $DIR_INTERNAL = $dirinternal 
 }
 
+# Control flow: Verify target directory existence and provide fallback.
+if (-not (Test-Path -LiteralPath $DIR_INTERNAL)) {
+    $currentUserDir = Join-Path -Path $env:USERPROFILE -ChildPath ".eclipse\com.renesas.platform_1435879475\internal"
+    
+    # Control flow: If current user's directory exists and differs from given path, suggest switching.
+    if (($DIR_INTERNAL -ne $currentUserDir) -and (Test-Path -LiteralPath $currentUserDir)) {
+        Write-Log "Target directory not found: $DIR_INTERNAL" -Level "WARN"
+        
+        # Control flow: Ask user if they want to switch to the detected directory.
+        if (Confirm-UserAction "Detected valid path for current user: '$currentUserDir'. Switch to it?") {
+            $DIR_INTERNAL = $currentUserDir
+            Write-Log "Switched target directory to: $DIR_INTERNAL" -Level "SUCCESS"
+        }
+    }
+    
+    # Control flow: Final safety check before proceeding.
+    if (-not (Test-Path -LiteralPath $DIR_INTERNAL)) {
+        Write-Log "Target directory '$DIR_INTERNAL' does not exist! Installation aborted." -Level "ERROR"
+        # Jump statement: Exit script due to missing target directory.
+        exit 1
+    }
+}
+
 ########################################################################################################################
 # ACTION 0: SELECT & DOWNLOAD PACK
 ########################################################################################################################
@@ -166,28 +189,16 @@ if ($zip0 -and $zip1) {
 
 # Control flow: Check if cleanall flag is set.
 if ($cleanall) {
-    # Control flow: Verify if internal directory exists before cleaning.
-    if (Test-Path -LiteralPath $DIR_INTERNAL) {
-        Write-Log "Cleaning target directory: $DIR_INTERNAL" -Level "WARN"
+    Write-Log "Cleaning target directory: $DIR_INTERNAL" -Level "WARN"
 
-        # Control flow: Confirm destructive action with user.
-        if (Confirm-UserAction "Are you sure you want to clean '$DIR_INTERNAL'?") {
-            Remove-Item -Path "$DIR_INTERNAL\*" -Recurse -Force -ErrorAction Stop
-            Write-Log "Directory cleaned successfully." -Level "SUCCESS"
-        }
-        else {
-            Write-Log "Skipped cleaning directory upon user request."
-        }
+    # Control flow: Confirm destructive action with user.
+    if (Confirm-UserAction "Are you sure you want to clean '$DIR_INTERNAL'?") {
+        Remove-Item -Path "$DIR_INTERNAL\*" -Recurse -Force -ErrorAction Stop
+        Write-Log "Directory cleaned successfully." -Level "SUCCESS"
     }
     else {
-        Write-Log "Directory does not exist, creating new: $DIR_INTERNAL"
-        New-Item -ItemType Directory -Path $DIR_INTERNAL -Force | Out-Null
+        Write-Log "Skipped cleaning directory upon user request."
     }
-}
-
-# Control flow: Create target directory if it does not exist.
-if (-not (Test-Path -LiteralPath $DIR_INTERNAL)) {
-    New-Item -ItemType Directory -Path $DIR_INTERNAL -Force | Out-Null
 }
 
 ########################################################################################################################
