@@ -10,6 +10,7 @@
 # - Setup desktop background wallpaper
 # - Install Clangd
 # - Install custom APT packages
+# - Install Nerd Fonts (Full Pack ~ 1.5GB)
 #
 # Usage: bash CoderCustomSetup_V2.sh
 ###############################################################################
@@ -32,6 +33,7 @@ export SETUP_JLINK_V950_EN=1
 export SETUP_JLINK_V950_ARM_EN=1
 export SETUP_JLINK_V970_EN=1
 export SETUP_JLINK_V970_ARM_EN=1
+export SETUP_NERD_FONTS_EN=1                # enable Nerd Fonts full pack installation
 
 export SETUP_CONN_CHECK_EN=1
 export SETUP_VALID_FILE_CHECK_FILE_EN=0     # temporarily not implemented/active
@@ -97,6 +99,10 @@ export URL_ZSH_SYNTAX_HIGHLIGHTING_REPO="https://github.com/zsh-users/zsh-syntax
 export URL_ZSH_AUTOSUGGESTIONS_REPO="https://github.com/zsh-users/zsh-autosuggestions.git"
 export URL_ZSH_Z_REPO="https://github.com/agkozak/zsh-z.git"
 export URL_CLANGD="https://github.com/clangd/clangd/releases/download/${CLANGD_VERSION}/${CLANGD_ZIP_FILENAME}"
+
+# Nerd Fonts specific variables
+export URL_NERD_FONTS_REPO="https://github.com/ryanoasis/nerd-fonts.git"
+export FOLDER_NERD_FONTS="${FOLDER_DOWNLOADS}/nerd-fonts"
 
 # ===========================================================================
 # Helper functions
@@ -301,7 +307,7 @@ InstallJLinkVersion() {
 
     echo ">>> Installing ${dest_name}..."
 
-    local final_url="${URL_JLINK_ARCHIVES}/${tag_name}/${file_name}"
+    final_url="${URL_JLINK_ARCHIVES}/${tag_name}/${file_name}"
     
     # Check network connection
     if ! PerformConnectionCheck "${final_url}"; then
@@ -431,7 +437,7 @@ if [[ "${SETUP_NVIM_EN}" == "1" ]]; then
     else
         echo ">>> Installing Neovim (${NVIM_VERSION})..."
         
-        local final_url="${URL_NVIM_DOWNLOAD}"
+        final_url="${URL_NVIM_DOWNLOAD}"
         
         # Check network connection
         if ! PerformConnectionCheck "${final_url}"; then
@@ -524,7 +530,7 @@ if [[ "${SETUP_OHMYZSH_EN}" == "1" ]]; then
             echo ">>> Backed up .zshrc → .zshrc.bak"
         fi
 
-        local final_url="${URL_OHMYZSH_INSTALL_SCRIPT}"
+        final_url="${URL_OHMYZSH_INSTALL_SCRIPT}"
         
         # Check network connection
         if ! PerformConnectionCheck "${final_url}"; then
@@ -566,7 +572,7 @@ if [[ "${SETUP_OHMYZSH_EN}" == "1" ]]; then
             echo ">>> Installing ngxxfus theme..."
             MakeThisDirExist "${FOLDER_OMZ_THEMES}"
 
-            local theme_url="${URL_NGXXFUS_THEME}"
+            theme_url="${URL_NGXXFUS_THEME}"
             
             # Check network connection for theme
             if ! PerformConnectionCheck "${theme_url}"; then
@@ -610,7 +616,7 @@ if [[ "${SETUP_USER_ALIASES_EN}" == "1" ]]; then
         echo ">>> Installing user aliases..."
         MakeThisDirExist "${FOLDER_FUS}"
 
-        local final_url="${URL_USER_ALIASES}"
+        final_url="${URL_USER_ALIASES}"
         
         # Check network connection
         if ! PerformConnectionCheck "${final_url}"; then
@@ -658,7 +664,7 @@ if [[ "${SETUP_BACKGROUND_EN}" == "1" ]]; then
         MakeThisDirExist "${FOLDER_BACKGROUND}"
         cd "${FOLDER_DOWNLOADS}"
 
-        local final_url="${URL_BACKGROUND_IMG}"
+        final_url="${URL_BACKGROUND_IMG}"
         
         # Check network connection
         if ! PerformConnectionCheck "${final_url}"; then
@@ -710,7 +716,7 @@ if [[ "${SETUP_CLANGD_EN}" == "1" ]]; then
         echo ">>> Installing Clangd (${CLANGD_VERSION})..."
         cd "${FOLDER_DOWNLOADS}"
 
-        local final_url="${URL_CLANGD}"
+        final_url="${URL_CLANGD}"
         
         # Check network connection
         if ! PerformConnectionCheck "${final_url}"; then
@@ -755,6 +761,46 @@ if [[ "${SETUP_CLANGD_EN}" == "1" ]]; then
                 echo "[ERR] Failed to download Clangd from ${final_url}"
             fi
         fi
+        cd "${FOLDER_CURRENT}"
+    fi
+fi
+
+# ===========================================================================
+# Install Nerd Fonts (Full Pack)
+# ===========================================================================
+# Check if Nerd Fonts setup is enabled
+if [[ "${SETUP_NERD_FONTS_EN}" == "1" ]]; then
+    # Check if Nerd Fonts are already installed in the user directory
+    if ls "${FOLDER_HOME}/.local/share/fonts/NerdFonts/"* 1> /dev/null 2>&1; then
+        echo "[INF] Nerd Fonts are already installed. Skipping..."
+    else
+        echo ">>> Installing Nerd Fonts full pack (~1.5GB, this may take a while)..."
+        MakeThisDirExist "${FOLDER_DOWNLOADS}"
+        cd "${FOLDER_DOWNLOADS}"
+
+        # Check if font repository directory already exists
+        if [ ! -d "${FOLDER_NERD_FONTS}" ]; then
+            echo "[INF] Cloning Nerd Fonts repository (depth 1)..."
+            git clone --depth 1 "${URL_NERD_FONTS_REPO}" "${FOLDER_NERD_FONTS}"
+        else
+            echo "[INF] Nerd Fonts repository already cloned. Skipping clone."
+        fi
+
+        # Check if install script is available
+        if [ -f "${FOLDER_NERD_FONTS}/install.sh" ]; then
+            echo "[INF] Running Nerd Fonts installation script..."
+            cd "${FOLDER_NERD_FONTS}"
+            ./install.sh
+
+            echo "[INF] Cleaning up Nerd Fonts repository to save space..."
+            cd "${FOLDER_CURRENT}"
+            rm -rf "${FOLDER_NERD_FONTS}"
+            
+            echo "[INF] Nerd Fonts installation successful."
+        else
+            echo "[ERR] Nerd Fonts install.sh not found."
+        fi
+        
         cd "${FOLDER_CURRENT}"
     fi
 fi
