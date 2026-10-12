@@ -86,7 +86,7 @@ DIR_EXTRACTED="${TMPDIR:-/tmp}"
 
 # Control flow: Set default internal directory if not provided.
 if [[ -z "$DIR_INTERNAL" ]]; then
-    DIR_INTERNAL="${HOME}/.eclipse/com.renesas.platform_1435879475/internal"
+    DIR_INTERNAL="${HOME}/.eclipse/com.renesas.platform_2047834950/internal"
 fi
 
 # Control flow: Select base URL based on source parameter.
