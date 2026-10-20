@@ -76,6 +76,83 @@ confirm_user_action() {
     [[ "$response" == "y" ]]
 }
 
+# /*
+#  * @brief Check required dependencies and prompt user to install missing ones.
+#  */
+check_and_install_deps() {
+    local deps=("curl" "grep" "fzf" "unzip")
+    local missing_deps=()
+
+    # Control flow: Iterate through required commands to check availability.
+    for cmd in "${deps[@]}"; do
+        # Control flow: Append to missing list if command is not found in PATH.
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            missing_deps+=("$cmd")
+        fi
+    done
+
+    # Control flow: Return immediately if all dependencies are satisfied.
+    if [[ ${#missing_deps[@]} -eq 0 ]]; then
+        # Jump statement: Return success as no dependencies are missing.
+        return 0
+    fi
+
+    write_log "Missing required dependencies: ${missing_deps[*]}" "WARN"
+
+    # Control flow: Prompt user to confirm installation of missing packages.
+    if confirm_user_action "Do you want to install missing dependencies (${missing_deps[*]})?"; then
+        # Control flow: Detect system package manager and execute installation.
+        if command -v apt-get >/dev/null 2>&1; then
+            write_log "Enabling 'universe' repository..." "INFO"
+
+            # Control flow: Check if add-apt-repository is available, install software-properties-common if missing.
+            if ! command -v add-apt-repository >/dev/null 2>&1; then
+                sudo apt-get update && sudo apt-get install -y software-properties-common
+            fi
+
+            sudo add-apt-repository -y universe
+            sudo apt-get update
+
+            write_log "Installing missing packages: ${missing_deps[*]} ..." "INFO"
+            sudo apt-get install -y "${missing_deps[@]}"
+        elif command -v xbps-install >/dev/null 2>&1; then
+            write_log "Syncing repositories and installing packages via xbps..." "INFO"
+            sudo xbps-install -Sy "${missing_deps[@]}"
+        elif command -v dnf >/dev/null 2>&1; then
+            write_log "Installing missing packages via dnf..." "INFO"
+            sudo dnf install -y "${missing_deps[@]}"
+        elif command -v pacman >/dev/null 2>&1; then
+            write_log "Installing missing packages via pacman..." "INFO"
+            sudo pacman -Sy --noconfirm "${missing_deps[@]}"
+        else
+            write_log "Unsupported package manager. Please install manually: ${missing_deps[*]}" "ERROR"
+            # Jump statement: Exit script due to unsupported environment.
+            exit 1
+        fi
+
+        # Control flow: Re-verify all dependencies after installation attempt.
+        for cmd in "${missing_deps[@]}"; do
+            if ! command -v "$cmd" >/dev/null 2>&1; then
+                write_log "Failed to install '$cmd'. Installation aborted." "ERROR"
+                # Jump statement: Exit script if any dependency installation failed.
+                exit 1
+            fi
+        done
+
+        write_log "All dependencies installed successfully." "SUCCESS"
+    else
+        write_log "Cannot proceed without required dependencies. Exiting." "ERROR"
+        # Jump statement: Exit script as user declined dependency installation.
+        exit 1
+    fi
+}
+
+########################################################################################################################
+# DEPENDENCY CHECK
+########################################################################################################################
+
+check_and_install_deps
+
 ########################################################################################################################
 # CONFIG
 ########################################################################################################################
@@ -115,7 +192,22 @@ if [[ ! -d "$DIR_INTERNAL" ]]; then
 
     # Control flow: Final safety check before proceeding.
     if [[ ! -d "$DIR_INTERNAL" ]]; then
-        write_log "Target directory '$DIR_INTERNAL' does not exist! Installation aborted." "ERROR"
+        write_log "Target directory '$DIR_INTERNAL' does not exist!" "ERROR"
+        write_log "Please update the internal target path in the script (DIR_INTERNAL) or pass a valid path via '-d <path>'." "WARN"
+
+        # Control flow: Search for potential existing Renesas platform internal directories to assist the user.
+        if [[ -d "${HOME}/.eclipse" ]]; then
+            mapfile -t found_dirs < <(find "${HOME}/.eclipse" -maxdepth 3 -type d -name "internal" 2>/dev/null)
+
+            # Control flow: Display discovered candidate directories if any exist.
+            if [[ ${#found_dirs[@]} -gt 0 ]]; then
+                write_log "Found potential internal directories on your system:" "INFO"
+                for d in "${found_dirs[@]}"; do
+                    write_log "  -> $d" "INFO"
+                done
+            fi
+        fi
+
         # Jump statement: Exit script due to missing target directory.
         exit 1
     fi
@@ -150,6 +242,7 @@ else
         # Control flow: Ensure at least one version is parsed.
         if [[ ${#entries[@]} -eq 0 ]]; then
             write_log "No release versions found. Please check Regex or URL access." "ERROR"
+            # Jump statement: Exit script when no versions are available.
             exit 1
         fi
 
@@ -173,6 +266,7 @@ else
         # Control flow: Ensure at least one branch is found.
         if [[ ${#branches[@]} -eq 0 ]]; then
             write_log "No branches found at manual URL. Please check URL access." "ERROR"
+            # Jump statement: Exit script when no branches are found.
             exit 1
         fi
 
@@ -182,6 +276,7 @@ else
         # Control flow: Check if a branch was selected.
         if [[ -z "$BRANCH" ]]; then
             write_log "Branch selection cancelled by user." "WARN"
+            # Jump statement: Exit script gracefully if cancelled.
             exit 0
         fi
 
@@ -192,6 +287,7 @@ else
         branch_content="$(curl -fsSL "$branch_url" 2>&1)"
         if [[ $? -ne 0 ]]; then
             write_log "Failed to fetch branch page: $branch_content" "ERROR"
+            # Jump statement: Exit script on branch fetch failure.
             exit 1
         fi
 
@@ -200,6 +296,7 @@ else
         # Control flow: Ensure at least one build is found.
         if [[ ${#builds[@]} -eq 0 ]]; then
             write_log "No builds found under branch '$BRANCH'." "ERROR"
+            # Jump statement: Exit script when no builds are found.
             exit 1
         fi
 
@@ -209,6 +306,7 @@ else
         # Control flow: Check if a build was selected.
         if [[ -z "$BUILD" ]]; then
             write_log "Build selection cancelled by user." "WARN"
+            # Jump statement: Exit script gracefully if cancelled.
             exit 0
         fi
 
@@ -223,6 +321,7 @@ else
     pack_content="$(curl -fsSL "$PACK_BASE_URL" 2>&1)"
     if [[ $? -ne 0 ]]; then
         write_log "Failed to fetch pack listing: $pack_content" "ERROR"
+        # Jump statement: Exit script on pack list fetch failure.
         exit 1
     fi
 
@@ -236,12 +335,14 @@ else
     # Control flow: Abort if public pack zip is not found.
     if [[ -z "$zip0_name" ]]; then
         write_log "Could not find public pack zip at: $PACK_BASE_URL" "ERROR"
+        # Jump statement: Exit script if public zip is missing.
         exit 1
     fi
 
     # Control flow: Abort if internal pack zip is not found.
     if [[ -z "$zip1_name" ]]; then
         write_log "Could not find internal pack zip at: $PACK_BASE_URL" "ERROR"
+        # Jump statement: Exit script if internal zip is missing.
         exit 1
     fi
 
