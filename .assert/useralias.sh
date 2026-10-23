@@ -144,3 +144,43 @@ copy-rpi() {
     # Execute file transfer via rsync
     rsync "${rsync_args[@]}" "$src" "$dst"
 }
+
+
+# git hub wrapper functions
+
+git-add () {
+	git add "$@"
+}
+
+git-commit () {
+	# Usage: git-commit <ticket-id> <message...>
+	if [ $# -lt 2 ]; then
+		echo "Usage: git-commit <ticket> <commit message>" >&2
+		return 1
+	fi
+
+	local ticket="$1"
+	shift  # Drops $1 so "$*" gathers all remaining arguments as a single message
+	local timestamp
+	timestamp="$(date +"%D %T")"
+
+	git commit -m "${ticket} | ${timestamp} | $*"
+}
+
+git-push () {
+	git push -u origin HEAD
+}
+
+git-fetch () {
+	git fetch origin
+}
+
+git-pull () {
+	# Usage: git-pull [branch_name]
+	# Defaults to pulling the current tracking branch if no branch is passed
+	if [ -n "$1" ]; then
+		git pull origin "$1"
+	else
+		git pull origin
+	fi
+}
