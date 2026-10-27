@@ -30,17 +30,17 @@ export SETUP_BACKGROUND_EN=1
 export SETUP_AUTO_SET_BACKGROUND_EN=1       # only works if SETUP_BACKGROUND_EN=1
 export SETUP_CLANGD_EN=1
 export SETUP_JLINK_V950_EN=1
-export SETUP_JLINK_V950_ARM_EN=1
+export SETUP_JLINK_V950_ARM_EN=0
 export SETUP_JLINK_V970_EN=1
-export SETUP_JLINK_V970_ARM_EN=1
-export SETUP_NERD_FONTS_EN=1                # enable Nerd Fonts full pack installation
+export SETUP_JLINK_V970_ARM_EN=0
+export SETUP_NERD_FONTS_EN=0                # enable Nerd Fonts full pack installation
 
 export SETUP_CONN_CHECK_EN=1
 export SETUP_VALID_FILE_CHECK_FILE_EN=0     # temporarily not implemented/active
 
 export SETUP_APT_INSTALL_LIST_EN=1
 export SETUP_APT_INSTALL_LIST=(
-    "btop" "tree" "duf" "tmux" "curl" "unzip" "tar" "zsh"
+    "btop" "tree" "duf" "tmux" "curl" "unzip" "tar" "zsh" "alacritty"
 )
 
 export SETUP_HCMC_TIME_EN=1
