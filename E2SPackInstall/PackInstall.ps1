@@ -4,10 +4,38 @@ param(
     [string]$dirinternal,
     [string]$zip0,
     [string]$zip1,
-    [string]$dirdownloads = $PWD.Path,
+    [string]$dirdownloads = (Join-Path -Path $env:TEMP -ChildPath "pack_install"),
     [ValidateSet("release", "manual")]
     [string]$source = "release"
 )
+
+########################################################################################################################
+# CONFIGURATION & DEFAULT SETTINGS
+# Modify these variables to adjust default behavior or override them using script parameters.
+########################################################################################################################
+
+# Artifactory base URL endpoints for FSP packs
+$BASE_URL_RELEASE = "https://artifactory.global.renesas.com/artifactory/fsp-ra/release/"
+$BASE_URL_MANUAL  = "https://artifactory.global.renesas.com/artifactory/fsp-ra/manual/"
+
+# Default source type: 'release' (default) or 'manual'
+$SOURCE = $source
+
+# Temporary extraction directory (default: $env:TEMP)
+$DIR_EXTRACTED = $env:TEMP
+
+# Directory where downloaded ZIP files will be saved (default: $env:TEMP\pack_install)
+# Can be overridden via parameter: -dirdownloads <path>
+$DIR_DOWNLOADS = if ($dirdownloads) { $dirdownloads } else { Join-Path -Path $env:TEMP -ChildPath "pack_install" }
+
+# Target internal directory in Eclipse/e2studio (e.g. C:\Users\<user>\.eclipse\com.renesas.platform_<id>\internal)
+# If left empty (""), the script will auto-detect the e2studio platform folder matching 'com.renesas.platform_\d+'
+# and automatically set $DIR_INTERNAL to "$DIR_E2S_SUPPORT\internal".
+# Can be overridden via parameter: -dirinternal <path>
+$DIR_INTERNAL = if ($dirinternal) { $dirinternal } else { "" }
+
+# Internal variable storing the auto-detected e2studio platform support directory
+$DIR_E2S_SUPPORT = ""
 
 ########################################################################################################################
 # UTILS
@@ -67,57 +95,103 @@ function Confirm-UserAction {
 function Show-HelpMessage {
     Write-Host @"
 Usage:
-    .\PackInstall.ps1 [-cleanall] [-dirinternal <path>] [-zip0 <path>] [-zip1 <path>] [-dirdownloads <path>]
+    .\PackInstall.ps1 [-cleanall] [-dirinternal <path>] [-zip0 <path>] [-zip1 <path>] [-dirdownloads <path>] [-source <release|manual>]
 Arguments:
     -cleanall       Clean internal target directory before extraction.
-    -dirinternal    Path to specified internal target directory.
-    -zip0           Path to first pack zip file.
-    -zip1           Path to second internal pack zip file.
-    -dirdownloads   Directory to save downloaded files.
+    -dirinternal    Path to specified internal target directory (overrides DIR_INTERNAL).
+    -zip0           Path to first pack zip file (public pack).
+    -zip1           Path to second internal pack zip file (internal pack).
+    -dirdownloads   Directory to save downloaded files (default: $env:TEMP\pack_install).
     -source         Source type: 'release' (default) or 'manual'.
 "@
 }
 
 ########################################################################################################################
-# CONFIG
+# TARGET DIRECTORY RESOLUTION & ENVIRONMENT SETUP
 ########################################################################################################################
-$BASE_URL_RELEASE = "https://artifactory.global.renesas.com/artifactory/fsp-ra/release/"
-$BASE_URL_MANUAL  = "https://artifactory.global.renesas.com/artifactory/fsp-ra/manual/"
-$DIR_INTERNAL = "C:\Users\phu.nguyen-thanh\.eclipse\com.renesas.platform_1435879475\internal"
-$DIR_EXTRACTED = $env:TEMP
-$DIR_DOWNLOADS = $dirdownloads
 
-# Control flow: Override internal directory path if provided.
-if ($dirinternal) { 
-    $DIR_INTERNAL = $dirinternal 
+# Control flow: Auto-detect E2S support directory and internal path if not explicitly provided.
+if ([string]::IsNullOrWhiteSpace($DIR_INTERNAL)) {
+    if (-not [string]::IsNullOrWhiteSpace($DIR_E2S_SUPPORT) -and (Test-Path -LiteralPath $DIR_E2S_SUPPORT)) {
+        $DIR_INTERNAL = Join-Path -Path $DIR_E2S_SUPPORT -ChildPath "internal"
+        Write-Log "Using configured e2studio support directory: $DIR_E2S_SUPPORT" -Level "SUCCESS"
+    } else {
+        Write-Log "Searching for e2studio support directory..." -Level "INFO"
+
+        $eclipseBase = Join-Path -Path $env:USERPROFILE -ChildPath ".eclipse"
+        $foundPlatforms = @()
+
+        if (Test-Path -LiteralPath $eclipseBase) {
+            $foundPlatforms = @(Get-ChildItem -Path $eclipseBase -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match '^com\.renesas\.platform_\d+$' } |
+                Select-Object -ExpandProperty FullName)
+        }
+
+        if ($foundPlatforms.Count -eq 1) {
+            $DIR_E2S_SUPPORT = $foundPlatforms[0]
+            $DIR_INTERNAL = Join-Path -Path $DIR_E2S_SUPPORT -ChildPath "internal"
+            Write-Log "Auto-detected e2studio support directory: $DIR_E2S_SUPPORT" -Level "SUCCESS"
+        } elseif ($foundPlatforms.Count -gt 1) {
+            Write-Log "Found multiple e2studio platform directories. Please select one:" -Level "INFO"
+            if (Get-Command fzf -ErrorAction SilentlyContinue) {
+                $DIR_E2S_SUPPORT = $foundPlatforms | fzf --prompt="Select e2studio platform support directory: "
+            } else {
+                $DIR_E2S_SUPPORT = $foundPlatforms[0]
+            }
+            if (-not [string]::IsNullOrWhiteSpace($DIR_E2S_SUPPORT)) {
+                $DIR_INTERNAL = Join-Path -Path $DIR_E2S_SUPPORT -ChildPath "internal"
+                Write-Log "Selected e2studio support directory: $DIR_E2S_SUPPORT" -Level "SUCCESS"
+            }
+        } else {
+            Write-Log "Could not auto-detect e2studio support directory matching 'com.renesas.platform_\d+'." -Level "WARN"
+        }
+    }
 }
 
 # Control flow: Select base URL based on source parameter.
-$BASE_URL = if ($source -eq "manual") { $BASE_URL_MANUAL } else { $BASE_URL_RELEASE }
-Write-Log "Source mode: $source -> $BASE_URL"
+$BASE_URL = if ($SOURCE -eq "manual") { $BASE_URL_MANUAL } else { $BASE_URL_RELEASE }
+Write-Log "Source mode: $SOURCE -> $BASE_URL"
 
 # Control flow: Verify target directory existence and provide fallback.
-if (-not (Test-Path -LiteralPath $DIR_INTERNAL)) {
-    $currentUserDir = Join-Path -Path $env:USERPROFILE -ChildPath ".eclipse\com.renesas.platform_1435879475\internal"
-    
-    # Control flow: If current user's directory exists and differs from given path, suggest switching.
-    if (($DIR_INTERNAL -ne $currentUserDir) -and (Test-Path -LiteralPath $currentUserDir)) {
-        Write-Log "Target directory not found: $DIR_INTERNAL" -Level "WARN"
-        
-        # Control flow: Ask user if they want to switch to the detected directory.
-        if (Confirm-UserAction "Detected valid path for current user: '$currentUserDir'. Switch to it?") {
-            $DIR_INTERNAL = $currentUserDir
-            Write-Log "Switched target directory to: $DIR_INTERNAL" -Level "SUCCESS"
+if ([string]::IsNullOrWhiteSpace($DIR_INTERNAL) -or (-not (Test-Path -LiteralPath $DIR_INTERNAL))) {
+    # If DIR_E2S_SUPPORT exists but internal does not, offer to create it
+    if ($DIR_E2S_SUPPORT -and (Test-Path -LiteralPath $DIR_E2S_SUPPORT) -and (-not (Test-Path -LiteralPath $DIR_INTERNAL))) {
+        if (Confirm-UserAction "Internal directory '$DIR_INTERNAL' does not exist yet. Create it?") {
+            New-Item -ItemType Directory -Path $DIR_INTERNAL -Force | Out-Null
+            Write-Log "Created target directory: $DIR_INTERNAL" -Level "SUCCESS"
         }
     }
-    
-    # Control flow: Final safety check before proceeding.
-    if (-not (Test-Path -LiteralPath $DIR_INTERNAL)) {
-        Write-Log "Target directory '$DIR_INTERNAL' does not exist! Installation aborted." -Level "ERROR"
+
+    # Final safety check before proceeding.
+    if ([string]::IsNullOrWhiteSpace($DIR_INTERNAL) -or (-not (Test-Path -LiteralPath $DIR_INTERNAL))) {
+        if (-not [string]::IsNullOrWhiteSpace($DIR_INTERNAL)) {
+            Write-Log "Target directory '$DIR_INTERNAL' does not exist!" -Level "ERROR"
+        } else {
+            Write-Log "Target internal directory could not be determined automatically!" -Level "ERROR"
+        }
+        Write-Log "Please update the internal target path in the script (DIR_INTERNAL) or pass a valid path via '-dirinternal <path>'." -Level "WARN"
+
+        # Search for potential existing Renesas platform internal directories to assist user
+        $eclipseBase = Join-Path -Path $env:USERPROFILE -ChildPath ".eclipse"
+        if (Test-Path -LiteralPath $eclipseBase) {
+            $foundDirs = @(Get-ChildItem -Path $eclipseBase -Recurse -Depth 3 -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -eq 'internal' } |
+                Select-Object -ExpandProperty FullName)
+
+            if ($foundDirs.Count -gt 0) {
+                Write-Log "Found potential internal directories on your system:" -Level "INFO"
+                foreach ($d in $foundDirs) {
+                    Write-Log "  -> $d" -Level "INFO"
+                }
+            }
+        }
+
         # Jump statement: Exit script due to missing target directory.
         exit 1
     }
 }
+
+Write-Log "Target internal directory: $DIR_INTERNAL" -Level "INFO"
 
 ########################################################################################################################
 # ACTION 0: SELECT & DOWNLOAD PACK
@@ -258,6 +332,11 @@ if ($zip0 -and $zip1) {
 
     $ZIP0_URL = "${PACK_BASE_URL}${zip0Name}"
     $ZIP1_URL = "${PACK_BASE_URL}${zip1Name}"
+
+    # Control flow: Ensure download directory exists before saving files.
+    if (-not (Test-Path -LiteralPath $DIR_DOWNLOADS)) {
+        New-Item -ItemType Directory -Path $DIR_DOWNLOADS -Force | Out-Null
+    }
 
     $ZIP_PACK0 = Join-Path -Path $DIR_DOWNLOADS -ChildPath $zip0Name
     $ZIP_PACK1 = Join-Path -Path $DIR_DOWNLOADS -ChildPath $zip1Name

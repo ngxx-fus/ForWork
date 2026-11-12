@@ -1,27 +1,61 @@
 #!/usr/bin/env bash
 
 ########################################################################################################################
-# PARAMS
+# CONFIGURATION & DEFAULT SETTINGS
+# Modify these variables to adjust default behavior or override them using command-line arguments.
 ########################################################################################################################
 
-CLEANALL=false
+# Artifactory base URL endpoints for FSP packs
+BASE_URL_RELEASE="https://artifactory.global.renesas.com/artifactory/fsp-ra/release/"
+BASE_URL_MANUAL="https://artifactory.global.renesas.com/artifactory/fsp-ra/manual/"
+
+# Default source type: 'release' (stable release versions) or 'manual' (branch/build snapshots)
+# Can be overridden via CLI option: -s <source>
+SOURCE="release"
+
+# Target internal directory in Eclipse/e2studio (e.g., /home/coder/.eclipse/com.renesas.platform_<id>/internal/)
+# If left empty (""), the script will auto-detect DIR_E2S_SUPPORT matching 'com.renesas.platform_[0-9]+'
+# and automatically set DIR_INTERNAL to "${DIR_E2S_SUPPORT}/internal/".
+# If detection fails, you can specify this path here or pass it via CLI option: -d <path>
 DIR_INTERNAL=""
+
+# Directory where downloaded ZIP files will be saved (default: /tmp/pack_install)
+# Can be overridden via CLI option: -o <path>
+DIR_DOWNLOADS="${TMPDIR:-/tmp}/pack_install"
+
+# Temporary extraction directory (default: $TMPDIR or /tmp)
+DIR_EXTRACTED="${TMPDIR:-/tmp}"
+
+# Clean target directory before extraction: true or false (default: false)
+# Can be enabled via CLI option: -c
+CLEANALL=false
+
+# Optional pre-downloaded local ZIP files:
+# ZIP0: Path to the standard public pack ZIP
+# ZIP1: Path to the internal pack ZIP
+# Can be specified via CLI options: -z <path> and -Z <path>
 ZIP0=""
 ZIP1=""
-DIR_DOWNLOADS="$(pwd)"
-SOURCE="release"
+
+# Internal variable storing the auto-detected e2studio platform support directory
+DIR_E2S_SUPPORT="/home/coder/.eclipse/com.renesas.platform_2047834950"
+
+########################################################################################################################
+# CLI ARGUMENTS & USAGE
+########################################################################################################################
 
 usage() {
     cat <<EOF
 Usage:
-    ./PackInstall.sh [-c] [-d <path>] [-z <path>] [-Z <path>] [-o <path>] [-s <source>]
+    ./PackInstall.sh [-c] [-d <path>] [-z <path>] [-Z <path>] [-o <path>] [-s <source>] [-h]
 Arguments:
     -c          Clean internal target directory before extraction.
-    -d <path>   Path to specified internal target directory.
-    -z <path>   Path to first pack zip file.
-    -Z <path>   Path to second internal pack zip file.
-    -o <path>   Directory to save downloaded files.
+    -d <path>   Path to specified internal target directory (overrides DIR_INTERNAL).
+    -z <path>   Path to first pack zip file (public pack).
+    -Z <path>   Path to second internal pack zip file (internal pack).
+    -o <path>   Directory to save downloaded files (default: /tmp/pack_install, overrides DIR_DOWNLOADS).
     -s <source> Source type: 'release' (default) or 'manual'.
+    -h          Show this help message and exit.
 EOF
 }
 
@@ -154,16 +188,50 @@ check_and_install_deps() {
 check_and_install_deps
 
 ########################################################################################################################
-# CONFIG
+# TARGET DIRECTORY RESOLUTION & ENVIRONMENT SETUP
 ########################################################################################################################
 
-BASE_URL_RELEASE="https://artifactory.global.renesas.com/artifactory/fsp-ra/release/"
-BASE_URL_MANUAL="https://artifactory.global.renesas.com/artifactory/fsp-ra/manual/"
-DIR_EXTRACTED="${TMPDIR:-/tmp}"
-
-# Control flow: Set default internal directory if not provided.
+# Control flow: Auto-detect E2S support directory and internal path if not explicitly provided.
 if [[ -z "$DIR_INTERNAL" ]]; then
-    DIR_INTERNAL="${HOME}/.eclipse/com.renesas.platform_2047834950/internal"
+    if [[ -n "$DIR_E2S_SUPPORT" && -d "$DIR_E2S_SUPPORT" ]]; then
+        DIR_INTERNAL="${DIR_E2S_SUPPORT}/internal/"
+        write_log "Using configured e2studio support directory: $DIR_E2S_SUPPORT" "SUCCESS"
+    else
+        write_log "Searching for e2studio support directory..." "INFO"
+
+        eclipse_dirs=()
+        [[ -d "${HOME}/.eclipse" ]] && eclipse_dirs+=("${HOME}/.eclipse")
+        [[ -d "/home/coder/.eclipse" && "/home/coder/.eclipse" != "${HOME}/.eclipse" ]] && eclipse_dirs+=("/home/coder/.eclipse")
+
+        found_platforms=()
+        if [[ ${#eclipse_dirs[@]} -gt 0 ]]; then
+            # Find directory matching regex pattern: com.renesas.platform_[0-9]+
+            # Excludes other directories like com.renesas.platform_26.10.0_2047834950_linux_gtk_x86_64, org.eclipse.*
+            mapfile -t found_platforms < <(find "${eclipse_dirs[@]}" -mindepth 1 -maxdepth 1 -type d -regextype posix-extended -regex '.*/com\.renesas\.platform_[0-9]+' 2>/dev/null | sort -u)
+
+            # Fallback if -regextype is unsupported in the current find environment
+            if [[ ${#found_platforms[@]} -eq 0 ]]; then
+                mapfile -t found_platforms < <(find "${eclipse_dirs[@]}" -mindepth 1 -maxdepth 1 -type d -name "com.renesas.platform_*" 2>/dev/null | grep -E '/com\.renesas\.platform_[0-9]+$' | sort -u)
+            fi
+        fi
+
+        if [[ ${#found_platforms[@]} -eq 1 ]]; then
+            DIR_E2S_SUPPORT="${found_platforms[0]}"
+            DIR_INTERNAL="${DIR_E2S_SUPPORT}/internal/"
+            write_log "Auto-detected e2studio support directory: $DIR_E2S_SUPPORT" "SUCCESS"
+        elif [[ ${#found_platforms[@]} -gt 1 ]]; then
+            write_log "Found multiple e2studio platform directories. Please select one:" "INFO"
+            DIR_E2S_SUPPORT="$(printf '%s\n' "${found_platforms[@]}" | fzf --prompt="Select e2studio platform support directory: ")"
+            if [[ -n "$DIR_E2S_SUPPORT" ]]; then
+                DIR_INTERNAL="${DIR_E2S_SUPPORT}/internal/"
+                write_log "Selected e2studio support directory: $DIR_E2S_SUPPORT" "SUCCESS"
+            else
+                write_log "No directory selected from list." "WARN"
+            fi
+        else
+            write_log "Could not auto-detect e2studio support directory matching 'com.renesas.platform_[0-9]+'." "WARN"
+        fi
+    fi
 fi
 
 # Control flow: Select base URL based on source parameter.
@@ -176,30 +244,31 @@ fi
 write_log "Source mode: $SOURCE -> $BASE_URL"
 
 # Control flow: Verify target directory existence and provide fallback.
-if [[ ! -d "$DIR_INTERNAL" ]]; then
-    current_user_dir="${HOME}/.eclipse/com.renesas.platform_1435879475/internal"
-
-    # Control flow: If current user's directory exists and differs from given path, suggest switching.
-    if [[ "$DIR_INTERNAL" != "$current_user_dir" ]] && [[ -d "$current_user_dir" ]]; then
-        write_log "Target directory not found: $DIR_INTERNAL" "WARN"
-
-        # Control flow: Ask user if they want to switch to the detected directory.
-        if confirm_user_action "Detected valid path for current user: '$current_user_dir'. Switch to it?"; then
-            DIR_INTERNAL="$current_user_dir"
-            write_log "Switched target directory to: $DIR_INTERNAL" "SUCCESS"
+if [[ -z "$DIR_INTERNAL" || ! -d "$DIR_INTERNAL" ]]; then
+    # If DIR_E2S_SUPPORT exists but internal does not, offer to create it
+    if [[ -n "$DIR_E2S_SUPPORT" && -d "$DIR_E2S_SUPPORT" && ! -d "$DIR_INTERNAL" ]]; then
+        if confirm_user_action "Internal directory '$DIR_INTERNAL' does not exist yet. Create it?"; then
+            mkdir -p "$DIR_INTERNAL"
+            write_log "Created target directory: $DIR_INTERNAL" "SUCCESS"
         fi
     fi
 
-    # Control flow: Final safety check before proceeding.
+    # Final safety check before proceeding.
     if [[ ! -d "$DIR_INTERNAL" ]]; then
-        write_log "Target directory '$DIR_INTERNAL' does not exist!" "ERROR"
+        if [[ -n "$DIR_INTERNAL" ]]; then
+            write_log "Target directory '$DIR_INTERNAL' does not exist!" "ERROR"
+        else
+            write_log "Target internal directory could not be determined automatically!" "ERROR"
+        fi
         write_log "Please update the internal target path in the script (DIR_INTERNAL) or pass a valid path via '-d <path>'." "WARN"
 
-        # Control flow: Search for potential existing Renesas platform internal directories to assist the user.
-        if [[ -d "${HOME}/.eclipse" ]]; then
-            mapfile -t found_dirs < <(find "${HOME}/.eclipse" -maxdepth 3 -type d -name "internal" 2>/dev/null)
+        # Search for potential existing Renesas platform internal directories to assist the user.
+        search_dirs=()
+        [[ -d "${HOME}/.eclipse" ]] && search_dirs+=("${HOME}/.eclipse")
+        [[ -d "/home/coder/.eclipse" && "/home/coder/.eclipse" != "${HOME}/.eclipse" ]] && search_dirs+=("/home/coder/.eclipse")
+        if [[ ${#search_dirs[@]} -gt 0 ]]; then
+            mapfile -t found_dirs < <(find "${search_dirs[@]}" -maxdepth 3 -type d -name "internal" 2>/dev/null)
 
-            # Control flow: Display discovered candidate directories if any exist.
             if [[ ${#found_dirs[@]} -gt 0 ]]; then
                 write_log "Found potential internal directories on your system:" "INFO"
                 for d in "${found_dirs[@]}"; do
@@ -212,6 +281,8 @@ if [[ ! -d "$DIR_INTERNAL" ]]; then
         exit 1
     fi
 fi
+
+write_log "Target internal directory: $DIR_INTERNAL" "INFO"
 
 ########################################################################################################################
 # ACTION 0: SELECT & DOWNLOAD PACK
@@ -348,6 +419,11 @@ else
 
     ZIP0_URL="${PACK_BASE_URL}${zip0_name}"
     ZIP1_URL="${PACK_BASE_URL}${zip1_name}"
+
+    # Control flow: Ensure download directory exists before saving files.
+    if [[ ! -d "$DIR_DOWNLOADS" ]]; then
+        mkdir -p "$DIR_DOWNLOADS"
+    fi
 
     ZIP_PACK0="${DIR_DOWNLOADS}/${zip0_name}"
     ZIP_PACK1="${DIR_DOWNLOADS}/${zip1_name}"

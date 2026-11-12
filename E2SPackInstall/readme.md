@@ -1,90 +1,179 @@
 # FSP Pack Installer
 
-`PackInstall.ps1` downloads (or uses local ZIP files), extracts, and copies both the standard FSP pack and the INTERNAL pack into the `internal` directory of an Eclipse/e² studio environment.
+`PackInstall.sh` (Bash for Linux / containers) and `PackInstall.ps1` (PowerShell for Windows) automate downloading, extracting, and deploying both the standard Renesas FSP pack and the INTERNAL pack into the `internal` directory of an Eclipse / e² studio environment.
+
+---
+
+## Quick Start
+
+### On Linux / Containers (Coder, WSL, Ubuntu):
+```bash
+chmod +x ./PackInstall.sh
+./PackInstall.sh
+```
+
+### On Windows:
+```powershell
+# Run with ExecutionPolicy Bypass if script execution is restricted
+powershell -ExecutionPolicy Bypass -File .\PackInstall.ps1
+```
+
+Script sẽ tự động:
+1. Nhận diện thư mục e² studio (`com.renesas.platform_<digits>`) trong `.eclipse`.
+2. Lấy danh sách phiên bản FSP từ Artifactory và mở giao diện `fzf` để bạn chọn.
+3. Tải các gói pack về thư mục temp (`/tmp/pack_install` hoặc `%TEMP%\pack_install`).
+4. Giải nén và sao chép toàn bộ nội dung vào thư mục `internal/` của IDE.
+
+---
+
+## Features
+
+- **Tự động nhận diện thư mục e² studio (Auto-Detection)**: Tự động quét regex `com.renesas.platform_[0-9]+` trong `~/.eclipse/` (Linux) hoặc `%USERPROFILE%\.eclipse\` (Windows) để tìm đúng thư mục hỗ trợ platform và `internal/`. Bỏ qua các thư mục phụ khác (như `com.renesas.platform_26.10.0_...`).
+- **Tải file vào thư mục Temp**: Tải các file pack ZIP vào thư mục tạm thời (`/tmp/pack_install` hoặc `%TEMP%\pack_install`) thay vì lưu tại thư mục làm việc hiện tại.
+- **Chọn phiên bản trực quan**: Sử dụng `fzf` để duyệt và chọn version (release) hoặc branch & build (manual snapshot).
+- **Tự động kiểm tra & cài đặt công cụ (Linux)**: Tự kiểm tra các dependency (`curl`, `grep`, `fzf`, `unzip`) và hỏi để cài đặt tự động qua `apt`, `xbps`, `dnf`, hoặc `pacman`.
+- **Hỗ trợ cài đặt Offline (Local ZIP)**: Bỏ qua bước tải bằng cách truyền đường dẫn 2 file ZIP pack có sẵn.
+- **Tùy chọn Clean Install**: Dọn sạch thư mục `internal` cũ trước khi giải nén các pack mới.
+
+---
 
 ## Prerequisites
 
-* Windows PowerShell 5.1 or PowerShell 7+.
-* `fzf` installed and added to your `PATH` if you want to use interactive version selection. `fzf` is not required if **both** `-zip0` and `-zip1` arguments are provided.
-* Network access to Artifactory if using the automated download mode.
-* Close your IDE before installation to prevent file-in-use errors.
+### Cho Linux / Bash (`PackInstall.sh`):
+* Bash 4+
+* Các công cụ: `curl`, `grep`, `fzf`, `unzip` (script sẽ tự đề xuất cài đặt nếu thiếu).
+* Kết nối mạng tới Artifactory (nếu tải online).
+* **Đóng e² studio / Eclipse** trước khi chạy để tránh lỗi xung đột/khóa file.
 
-## Default Configuration
+### Cho Windows (`PackInstall.ps1`):
+* Windows PowerShell 5.1 hoặc PowerShell 7+.
+* Đã cài đặt `fzf` và có trong `PATH` (không bắt buộc nếu truyền cả 2 file zip local).
+* Kết nối mạng tới Artifactory (nếu tải online).
+* **Đóng e² studio / Eclipse** trước khi chạy.
 
-* `$BASE_URL`: The Artifactory URL used to fetch the version list and download the packs.
-* `$DIR_INTERNAL`: The target installation directory. You should verify and update the hard-coded path in the script to match your local setup.
-* `$DIR_EXTRACTED`: The temporary directory for extraction, defaulting to `$env:TEMP`.
-* `$DIR_DOWNLOADS`: The directory where downloaded ZIPs are saved. Defaults to the **current working directory** (`$PWD.Path`), which may differ from the script's location.
+---
 
-## Usage
+## Configuration
 
-```powershell
-.\PackInstall.ps1 [-cleanall] [-dirinternal <path>] [-zip0 <path>] [-zip1 <path>] [-dirdownloads <path>]
+Toàn bộ cấu hình được đưa lên **đầu file** của cả hai script (`PackInstall.sh` và `PackInstall.ps1`) trong khối **`CONFIGURATION & DEFAULT SETTINGS`**:
 
+| Biến cấu hình | Ý nghĩa | Giá trị mặc định |
+| --- | --- | --- |
+| `BASE_URL_RELEASE` | Endpoint Artifactory cho bản Release chính thức. | `https://artifactory.global.renesas.com/artifactory/fsp-ra/release/` |
+| `BASE_URL_MANUAL` | Endpoint Artifactory cho bản snapshot/build nhánh manual. | `https://artifactory.global.renesas.com/artifactory/fsp-ra/manual/` |
+| `SOURCE` | Chế độ nguồn: `"release"` (mặc định) hoặc `"manual"`. | `"release"` |
+| `DIR_INTERNAL` | Đường dẫn tới thư mục `internal/` đích. Nếu để `""`, script sẽ tự động tìm thông qua `DIR_E2S_SUPPORT`. | `""` (auto-detect) |
+| `DIR_E2S_SUPPORT` | Thư mục nền tảng e² studio (`com.renesas.platform_<digits>`). Nếu để `""`, script tự động quét tìm. | `""` (auto-detect) |
+| `DIR_DOWNLOADS` | Thư mục lưu file ZIP tải về. | `${TMPDIR:-/tmp}/pack_install` (Linux)<br>`$env:TEMP\pack_install` (Windows) |
+| `DIR_EXTRACTED` | Thư mục tạm dùng để giải nén file pack. | `${TMPDIR:-/tmp}` (Linux)<br>`$env:TEMP` (Windows) |
+| `CLEANALL` | Xóa sạch thư mục `internal` đích trước khi cài. | `false` |
+| `ZIP0` / `ZIP1` | Đường dẫn file ZIP pack có sẵn (nếu dùng local). | `""` |
+
+> [!TIP]
+> **Cơ chế tự động dò tìm (Auto-Detection):**
+> Khi `DIR_INTERNAL` để trống, cả hai script sẽ tìm trong `~/.eclipse/` (hoặc `/home/coder/.eclipse/` trên Linux) các thư mục có tên khớp mẫu `com.renesas.platform_[0-9]+` (ví dụ `com.renesas.platform_2047834950`).
+> - Nếu tìm thấy **1 thư mục**: Tự động chọn và gán `DIR_INTERNAL="${DIR_E2S_SUPPORT}/internal/"`.
+> - Nếu tìm thấy **nhiều thư mục**: Mở giao diện `fzf` để bạn chọn thư mục mong muốn.
+> - Nếu **không tìm thấy**: Script sẽ báo lỗi và nhắc bạn điền đường dẫn vào biến cấu hình hoặc truyền qua cờ `-d` (`-dirinternal`).
+
+---
+
+## Tham số dòng lệnh (CLI Options)
+
+| Linux (`PackInstall.sh`) | Windows (`PackInstall.ps1`) | Mô tả |
+| --- | --- | --- |
+| `-c` | `-cleanall` | Hỏi xác nhận và xóa sạch nội dung trong thư mục `internal` trước khi giải nén. |
+| `-d <path>` | `-dirinternal <path>` | Ghi đè đường dẫn thư mục `internal/` đích. |
+| `-z <path>` | `-zip0 <path>` | Đường dẫn tới file ZIP **public pack**. |
+| `-Z <path>` | `-zip1 <path>` | Đường dẫn tới file ZIP **internal pack**. |
+| `-o <path>` | `-dirdownloads <path>` | Thư mục lưu file ZIP tải về. |
+| `-s <source>` | `-source <source>` | Nguồn tải: `'release'` (mặc định) hoặc `'manual'`. |
+| `-h` | - | Hiển thị trợ giúp và thoát. |
+
+> [!IMPORTANT]
+> Script chỉ bỏ qua bước kết nối Artifactory và `fzf` khi bạn cung cấp **đồng thời cả hai file ZIP** (`-z` và `-Z` hoặc `-zip0` và `-zip1`).
+
+---
+
+## Ví dụ sử dụng
+
+### 1. Tải bản Release và cài đặt tự động (Khuyên dùng)
+
+**Linux / Bash:**
+```bash
+./PackInstall.sh
 ```
 
-| Parameter | Description |
-| --- | --- |
-| `-cleanall` | Prompts for confirmation, then deletes the existing contents of the target directory before extracting and installing. |
-| `-dirinternal` | Overrides the default target directory path. |
-| `-zip0` | File path to the **standard pack** ZIP. |
-| `-zip1` | File path to the **INTERNAL pack** ZIP. |
-| `-dirdownloads` | Directory to save the ZIP files during an automated download. This directory must exist before running the script. |
-
-**Note:** The script will only bypass the Artifactory connection and `fzf` selection if **both `-zip0` and `-zip1**` are provided. If only one is provided, the script will fall back to the interactive version selection and automated download mode.
-
-## Examples
-
-### Select Version, Download, and Install
-
+**Windows PowerShell:**
 ```powershell
 .\PackInstall.ps1
-
 ```
 
-The script fetches the version list from Artifactory, opens `fzf` for selection, downloads both ZIPs to the current working directory, and installs them.
+### 2. Tải bản build thử nghiệm (Manual snapshot / Branch)
 
-### Download and Install with `-cleanall`
+**Linux / Bash:**
+```bash
+./PackInstall.sh -s manual
+```
 
+**Windows PowerShell:**
+```powershell
+.\PackInstall.ps1 -source manual
+```
+
+### 3. Dọn sạch thư mục cũ trước khi cài đặt (`-c`)
+
+**Linux / Bash:**
+```bash
+./PackInstall.sh -c
+```
+
+**Windows PowerShell:**
 ```powershell
 .\PackInstall.ps1 -cleanall
-
 ```
 
-The script **downloads the ZIPs first**, prompts for confirmation to clear the target directory, and then proceeds with extraction and installation.
+### 4. Cài đặt từ 2 file ZIP có sẵn trong máy (Offline)
 
-### Install from Local ZIP Files
+**Linux / Bash:**
+```bash
+./PackInstall.sh \
+    -z /tmp/FSP_Packs_v6.6.0.zip \
+    -Z /tmp/FSP_Packs_INTERNAL_v6.6.0.zip
+```
 
-Replace the paths below with the **actual file paths on your machine**:
-
+**Windows PowerShell:**
 ```powershell
 .\PackInstall.ps1 `
-    -zip0 'C:\Downloads\FSP_Packs_v6.6.0-rc.0.zip' `
-    -zip1 'C:\Downloads\FSP_Packs_INTERNAL_v6.6.0-rc.0.zip'
-
+    -zip0 'C:\Downloads\FSP_Packs_v6.6.0.zip' `
+    -zip1 'C:\Downloads\FSP_Packs_INTERNAL_v6.6.0.zip'
 ```
 
-### Specify Custom Download and Installation Directories
+### 5. Chỉ định đường dẫn tùy chỉnh
 
+**Linux / Bash:**
+```bash
+./PackInstall.sh \
+    -d /home/coder/.eclipse/com.renesas.platform_2047834950/internal \
+    -o /tmp/custom_downloads
+```
+
+**Windows PowerShell:**
 ```powershell
-New-Item -ItemType Directory -Path 'C:\Packs' -Force | Out-Null
-
 .\PackInstall.ps1 `
-    -dirdownloads 'C:\Packs' `
-    -dirinternal 'C:\CustomIDE\.eclipse\internal'
-
+    -dirinternal 'C:\CustomIDE\.eclipse\internal' `
+    -dirdownloads 'C:\CustomDownloads'
 ```
 
-## Under the Hood
+---
 
-1. If both local ZIP paths are not provided, the script retrieves the version list, prompts the user via `fzf`, and downloads `ZIP0` (standard) and `ZIP1` (INTERNAL). Existing downloaded files will be skipped.
-2. If `-cleanall` is passed, the script asks for confirmation before clearing the target directory. If you answer `N` or leave it blank, the script **continues the installation** but skips the deletion step.
-3. The script extracts `ZIP0` and then `ZIP1` into subdirectories within `$env:TEMP`. Each ZIP must contain an `internal` folder at its root after extraction.
-4. The script copies the `internal` contents of `ZIP0` first, followed by `ZIP1` using `-Force` to overwrite any matching files.
+## Quy trình hoạt động bên dưới (Workflow Details)
 
-## Limitations and Safety Notes
-
-* **Backup your target directory before using `-cleanall`.** Currently, the script deletes the target directory's contents *before* confirming that both ZIPs extracted successfully. If a ZIP is missing/corrupted or extraction fails, the script cannot automatically restore the deleted data.
-* The version selection step relies on the HTML format returned by Artifactory. If the expected `href` patterns change and the regex fails, the automated selection will not work. In this case, download the ZIPs manually and use the `-zip0` and `-zip1` arguments.
-* The script does not verify the file integrity of existing ZIPs before skipping downloads.
-* Extracted folders in `$env:TEMP` are not automatically deleted by the script. You can inspect or manually delete them when they are no longer needed.
+1. **Kiểm tra công cụ**: Xác minh đầy đủ các tiện ích cần thiết (`curl`, `grep`, `fzf`, `unzip`).
+2. **Xác định môi trường & Thư mục**: Tự động nhận diện thư mục platform e² studio (`DIR_E2S_SUPPORT`) và thư mục `internal` (`DIR_INTERNAL`).
+3. **Lấy Pack**:
+   - Nếu có sẵn cả 2 file ZIP local: Sử dụng trực tiếp.
+   - Nếu tải online: Lấy danh sách từ Artifactory, cho người dùng chọn qua `fzf`, rồi tải về thư mục temp (`/tmp/pack_install` hoặc `%TEMP%\pack_install`). Nếu file đã tồn tại sẽ bỏ qua tải lại.
+4. **Dọn dẹp (Tùy chọn)**: Nếu có cờ `-c` / `-cleanall`, xác nhận người dùng rồi làm sạch thư mục `internal` đích.
+5. **Giải nén**: Giải nén cả 2 pack vào thư mục tạm.
+6. **Sao chép**: Copy các file từ public pack trước, sau đó ghi đè các file từ internal pack vào thư mục `internal` của IDE.
